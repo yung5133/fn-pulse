@@ -1,0 +1,138 @@
+{% extends "layout.html" %}
+{% block title %}播放历史 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">播放历史</h1>
+    <p class="page-desc">全站观影流水，数据来自 trimmedia.db 的 item_user_play 表</p>
+</div>
+
+<div class="card">
+    <div id="alert"></div>
+    <div class="toolbar">
+        <select id="f_user"><option value="">所有用户</option></select>
+        <input type="text" id="f_search" placeholder="搜索片名…">
+        <select id="f_range">
+            <option value="">全部时间</option>
+            <option value="today">今天</option>
+            <option value="7d">近 7 天</option>
+            <option value="30d">近 30 天</option>
+            <option value="90d">近 90 天</option>
+        </select>
+        <select id="f_size">
+            <option value="25">每页 25 条</option>
+            <option value="50">每页 50 条</option>
+            <option value="100">每页 100 条</option>
+        </select>
+        <button id="btn_query" class="btn-primary btn-sm">查询</button>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th>影片</th>
+                <th>用户</th>
+                <th>类型</th>
+                <th>分辨率</th>
+                <th>进度</th>
+                <th class="num">已播 / 总时长</th>
+                <th>最后播放</th>
+            </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="pager">
+        <button id="prev" class="btn-sm">上一页</button>
+        <span id="page_info" class="dim">—</span>
+        <button id="next" class="btn-sm">下一页</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1, pages = 1;
+
+function params() {
+    const p = new URLSearchParams({
+        page: page,
+        per_page: document.getElementById('f_size').value
+    });
+    const u = document.getElementById('f_user').value;
+    const s = document.getElementById('f_search').value.trim();
+    const r = document.getElementById('f_range').value;
+    if (u) p.set('user_guid', u);
+    if (s) p.set('search', s);
+    if (r) p.set('range_key', r);
+    return p.toString();
+}
+
+async function load() {
+    const alertBox = document.getElementById('alert');
+    alertBox.innerHTML = '';
+    try {
+        const r = await api('/api/history?' + params());
+        const d = r.data;
+        pages = d.pages || 1;
+        const rows = d.data;
+
+        document.getElementById('page_info').textContent =
+            `第 ${d.page} / ${d.pages} 页 · 共 ${d.total} 条`;
+        document.getElementById('prev').disabled = d.page <= 1;
+        document.getElementById('next').disabled = d.page >= d.pages;
+
+        const tbody = document.getElementById('tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">没有匹配的记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(p => `
+            <tr>
+                <td>
+                    <div style="font-weight:550;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                         title="${(p.original_title || '').replace(/"/g, '&quot;')}">
+                        ${p.title}
+                    </div>
+                    ${p.season_number != null && p.episode_number != null
+                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(p.season_number).padStart(2,'0')}E${String(p.episode_number).padStart(2,'0')}</span>` : ''}
+                </td>
+                <td>${p.username}</td>
+                <td><span class="badge">${p.item_type || '—'}</span></td>
+                <td>${p.resolution ? `<span class="badge">${p.resolution}</span>` : '<span class="faint">—</span>'}</td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:7px">
+                        <span class="bar" style="width:60px"><i style="width:${p.progress}%"></i></span>
+                        <span class="faint" style="font-size:12px">${p.progress}%</span>
+                    </div>
+                </td>
+                <td class="num mono">${p.position_text} / ${p.runtime_text}</td>
+                <td class="mono dim">${p.update_time}</td>
+            </tr>`).join('');
+    } catch (e) {
+        document.getElementById('alert').innerHTML =
+            `<div class="alert alert-err">${e.message}</div>`;
+    }
+}
+
+async function loadUsers() {
+    try {
+        const r = await api('/api/users');
+        const sel = document.getElementById('f_user');
+        sel.innerHTML = '<option value="">所有用户</option>' +
+            r.data.map(u => `<option value="${u.guid}">${u.username}</option>`).join('');
+    } catch (e) {}
+}
+
+document.getElementById('btn_query').onclick = () => { page = 1; load(); };
+document.getElementById('prev').onclick = () => { if (page > 1) { page--; load(); } };
+document.getElementById('next').onclick = () => { if (page < pages) { page++; load(); } };
+document.getElementById('f_search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { page = 1; load(); }
+});
+
+window.addEventListener('load', () => { loadUsers(); load(); });
+</script>
+{% endblock %}

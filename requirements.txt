@@ -1,0 +1,10 @@
+# 这些版本组合已通过端到端验证。
+# 注意 fastapi >= 0.141 起 TemplateResponse 只接受具名参数 (request=, name=, context=)，
+# 任意升级 fastapi/starlette 前请先回归页面渲染。
+fastapi==0.141.1
+starlette==1.7.0
+uvicorn==0.53.0
+jinja2==3.1.6
+requests==2.34.2
+python-multipart==0.0.32
+itsdangerous==2.2.0

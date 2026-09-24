@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.py[cod]
+.venv/
+venv/
+config/
+static/img/*.psd
+.tmp/
+*.db
+*.db-wal
+*.db-shm
+*.log
+.idea/
+.vscode/
+# WorkBuddy 项目工作数据，非交付内容
+.workbuddy/
+.DS_Store

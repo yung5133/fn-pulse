@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 · FnPulse 飞牛映迹</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="login-wrap">
+    <div class="card login-card">
+        <div class="card-head">
+            <div class="brand-mark" style="width:38px;height:38px;font-size:18px">影</div>
+            <div style="text-align:center">
+                <div style="font-size:17px;font-weight:700">FnPulse · 飞牛映迹</div>
+                <div class="faint" style="font-size:12px">飞牛影视数据洞察面板</div>
+            </div>
+        </div>
+
+        <div id="msg"></div>
+
+        <label class="field">
+            <span>账号</span>
+            <input type="text" id="username" autocomplete="off" placeholder="本地管理员账号">
+        </label>
+        <label class="field">
+            <span>密码</span>
+            <input type="password" id="password" autocomplete="new-password" placeholder="密码">
+        </label>
+
+        <label class="field" style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="via_fn" style="width:auto"
+                   {% if not fn_login_available %}disabled{% endif %}>
+            <span style="margin:0">使用飞牛影视账号校验
+                {% if not fn_login_available %}<span class="faint">（需先配置 authx 签名素材）</span>{% endif %}
+            </span>
+        </label>
+
+        <button id="submit" class="btn-primary" style="width:100%;justify-content:center">登 录</button>
+
+        <div class="faint" style="margin-top:16px;font-size:12px;text-align:center">
+            默认凭证 admin / fnpulse —— 登录后请立即修改
+        </div>
+    </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function login() {
+    const msg = $('msg');
+    msg.innerHTML = '';
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                username: $('username').value.trim(),
+                password: $('password').value,
+                via_fn: $('via_fn').checked
+            })
+        });
+        const body = await res.json();
+        if (body.status === 'success') { location.href = '/'; return; }
+        msg.innerHTML = `<div class="alert alert-err">${body.message || '登录失败'}</div>`;
+    } catch (e) {
+        msg.innerHTML = `<div class="alert alert-err">请求失败：${e.message}</div>`;
+    }
+}
+$('submit').onclick = login;
+document.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>

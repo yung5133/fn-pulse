@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+{% block title %}数据洞察 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">数据洞察</h1>
+    <p class="page-desc">用户画像、作息分布与画质结构</p>
+</div>
+
+<div id="alert"></div>
+
+<div class="grid grid-2" style="margin-bottom:16px">
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2 class="card-title">作息分布</h2>
+                <p class="card-sub">按本地时区逐小时统计播放次数</p>
+            </div>
+        </div>
+        <div id="hours_chart" class="chart-box"></div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2 class="card-title">画质结构</h2>
+                <p class="card-sub">按播放时的分辨率记录统计</p>
+            </div>
+        </div>
+        <div id="quality_chart" class="chart-box"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <h2 class="card-title">用户画像</h2>
+        <p class="card-sub" style="margin:0">依据播放行为生成</p>
+    </div>
+    <div id="profiles"><div class="empty">加载中…</div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAlert(e) {
+    document.getElementById('alert').innerHTML =
+        `<div class="alert alert-err">${e.message}</div>`;
+}
+
+async function loadHours() {
+    try {
+        const r = await api('/api/insight/hours');
+        const rows = r.data;
+        const box = document.getElementById('hours_chart');
+        if (typeof echarts === 'undefined') {
+            // CDN 不可达时的兜底：纯 DOM 条形图
+            fallbackBars(box, rows.filter(x => x.plays > 0), 'hour', 'plays', ' 次');
+            return;
+        }
+        echarts.init(box).setOption({
+            grid: { left: 44, right: 16, top: 16, bottom: 30 },
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: rows.map(r => String(r.hour).padStart(2, '0') + '时') },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            series: [{
+                type: 'bar', data: rows.map(r => r.plays), barMaxWidth: 18,
+                itemStyle: { color: '#6366f1', borderRadius: [3, 3, 0, 0] }
+            }]
+        });
+    } catch (e) { showAlert(e); }
+}
+
+async function loadQuality() {
+    try {
+        const r = await api('/api/insight/quality');
+        const dist = r.data.distribution;
+        const box = document.getElementById('quality_chart');
+        if (!dist.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+        if (typeof echarts === 'undefined') {
+            fallbackBars(box, dist, 'resolution', 'plays', ' 次');
+            return;
+        }
+        echarts.init(box).setOption({
+            tooltip: { trigger: 'item', formatter: '{b}: {c} 次 ({d}%)' },
+            series: [{
+                type: 'pie', radius: ['42%', '70%'], center: ['50%', '50%'],
+                data: dist.map(d => ({ name: d.resolution, value: d.plays })),
+                label: { fontSize: 11 }
+            }]
+        });
+    } catch (e) { showAlert(e); }
+}
+
+async function loadProfiles() {
+    try {
+        const r = await api('/api/insight/profiles');
+        const rows = r.data;
+        const box = document.getElementById('profiles');
+        if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+
+        box.innerHTML = '<div class="grid grid-2">' + rows.map(u => {
+            const badges = (u.badges || []).map(b =>
+                `<span class="badge badge-info" title="${b.desc}">${b.icon} ${b.name}</span>`
+            ).join(' ') || '<span class="faint">暂无勋章</span>';
+            const expired = u.days_left !== null && u.days_left < 0;
+            const expire = u.expire_date
+                ? `<span class="badge ${expired ? 'badge-err' : 'badge-ok'}">${u.expire_date} · ${
+                        expired ? '已过期' : '剩 ' + u.days_left + ' 天'}</span>`
+                : '<span class="faint">—</span>';
+            return `
+            <div style="border:1px solid var(--border);border-radius:10px;padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+                    <b style="font-size:14px">${u.username}</b>
+                    ${u.is_admin ? '<span class="badge badge-info">管理员</span>' : ''}
+                </div>
+                <div class="dim" style="margin:6px 0 8px;font-size:12.5px;font-variant-numeric:tabular-nums">
+                    ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)} · 最近 ${u.last_play || '—'}
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    ${badges}${expire}
+                </div>
+                ${u.note ? `<div class="faint" style="margin-top:7px;font-size:12px">备注：${u.note}</div>` : ''}
+            </div>`;
+        }).join('') + '</div>';
+    } catch (e) { showAlert(e); }
+}
+
+window.addEventListener('load', () => { loadHours(); loadQuality(); loadProfiles(); });
+</script>
+{% endblock %}

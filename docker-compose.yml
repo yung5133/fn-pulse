@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  fn-pulse:
+    image: fn-pulse:latest
+    container_name: fn-pulse
+    restart: unless-stopped
+    network_mode: host          # 管理后台端口 10307
+    volumes:
+      - ./config:/app/config                                  # 本项目的配置与业务库
+      # 飞牛影视的媒体数据库目录（SQLite 引擎必填，强烈建议只读挂载）
+      # 在 NAS 上真实路径为 /usr/local/apps/@appdata/trim.media/database
+      - /usr/local/apps/@appdata/trim.media/database:/fn-data:ro
+    environment:
+      - TZ=Asia/Shanghai
+      # ---- 飞牛影视连接 ----
+      - FN_HOST=http://127.0.0.1:5666
+      - FN_USERNAME=                    # 飞牛影视管理员账号
+      - FN_PASSWORD=                    # 飞牛影视管理员密码
+      # ---- SQLite 引擎（默认，推荐）----
+      - FN_DB_PATH=/fn-data/trimmedia.db
+      # ---- 可选：HTTP API 引擎签名材料，需自行从飞牛 Web 端获取 ----
+      - FN_SECRET_STRING=
+      - FN_API_KEY=

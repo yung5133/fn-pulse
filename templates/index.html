@@ -1,0 +1,192 @@
+{% extends "layout.html" %}
+{% block title %}仪表盘 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">全景仪表盘</h1>
+    <p class="page-desc">数据源：{{ engine.mode }} 引擎 · 快照更新于 <span id="snapshot_at">—</span></p>
+</div>
+
+<div id="alert"></div>
+
+<div class="grid grid-4" style="margin-bottom:16px">
+    <div class="card">
+        <div class="stat-label">媒体总量</div>
+        <div class="stat-value" id="s_total">—</div>
+        <div class="stat-foot" id="s_total_foot">—</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">累计播放次数</div>
+        <div class="stat-value" id="s_plays">—</div>
+        <div class="stat-foot">今日 <span id="s_today">—</span> 次</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">累计观看时长</div>
+        <div class="stat-value" id="s_hours">—<span class="stat-unit">小时</span></div>
+        <div class="stat-foot">统计口径为已播进度累计</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">活跃用户</div>
+        <div class="stat-value" id="s_users">—</div>
+        <div class="stat-foot">最近播放 <span id="s_latest">—</span></div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+    <div class="card-head">
+        <div>
+            <h2 class="card-title">播放趋势</h2>
+            <p class="card-sub">按本地时区（UTC+8）按天聚合</p>
+        </div>
+        <div class="toolbar" style="margin:0">
+            <select id="trend_days">
+                <option value="7">近 7 天</option>
+                <option value="30" selected>近 30 天</option>
+                <option value="90">近 90 天</option>
+            </select>
+        </div>
+    </div>
+    <div id="trend" class="chart-box"></div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-head">
+            <h2 class="card-title">用户活跃排行</h2>
+            <p class="card-sub" style="margin:0">按播放次数</p>
+        </div>
+        <div id="users_box"><div class="empty">加载中…</div></div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <h2 class="card-title">最近播放</h2>
+            <p class="card-sub" style="margin:0">最新 10 条流水</p>
+        </div>
+        <div id="recent_box"><div class="empty">加载中…</div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const alertBox = document.getElementById('alert');
+
+function showError(e) {
+    alertBox.innerHTML = `<div class="alert alert-err">
+        <b>数据源不可用：</b>${e.message}
+        <div style="margin-top:8px">
+            <a href="/settings">前往系统设置检查数据源配置</a>
+        </div></div>`;
+}
+
+async function loadOverview() {
+    try {
+        const r = await api('/api/stats/overview');
+        const d = r.data;
+        document.getElementById('s_total').textContent = fmt.n(d.total);
+        document.getElementById('s_total_foot').textContent =
+            `电影 ${fmt.n(d.movie)} · 剧集 ${fmt.n(d.series)} · 单集 ${fmt.n(d.episode)}`;
+        document.getElementById('s_plays').textContent = fmt.n(d.total_plays);
+        document.getElementById('s_today').textContent = fmt.n(d.today_plays);
+        document.getElementById('s_hours').innerHTML = `${fmt.n(d.total_hours)}<span class="stat-unit">小时</span>`;
+        document.getElementById('s_users').textContent = fmt.n(d.active_users);
+        document.getElementById('s_latest').textContent = d.latest_play || '—';
+        alertBox.innerHTML = '';
+    } catch (e) { showError(e); }
+}
+
+let trendChart = null;
+async function loadTrend() {
+    const days = document.getElementById('trend_days').value;
+    try {
+        const r = await api('/api/stats/trend?days=' + days);
+        const rows = r.data;
+        const box = document.getElementById('trend');
+        if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+
+        if (typeof echarts === 'undefined') {
+            fallbackBars(box, rows, 'date', 'plays', ' 次');
+            return;
+        }
+        trendChart = trendChart || echarts.init(box);
+        trendChart.setOption({
+            grid: { left: 44, right: 20, top: 20, bottom: 30 },
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['播放次数', '观看时长'], top: 0, right: 0, itemWidth: 12, itemHeight: 8 },
+            xAxis: { type: 'category', data: rows.map(r => r.date.slice(5)), axisLine: { lineStyle: { color: '#e3e8ef' } } },
+            yAxis: [
+                { type: 'value', name: '次', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                { type: 'value', name: '小时', splitLine: { show: false } }
+            ],
+            series: [
+                {
+                    name: '播放次数', type: 'line', smooth: true, showSymbol: false,
+                    data: rows.map(r => r.plays), itemStyle: { color: '#4f46e5' },
+                    areaStyle: { color: 'rgba(79,70,229,.10)' }
+                },
+                {
+                    name: '观看时长', type: 'bar', yAxisIndex: 1, barMaxWidth: 14,
+                    data: rows.map(r => r.hours), itemStyle: { color: 'rgba(124,58,237,.35)' }
+                }
+            ]
+        });
+    } catch (e) { showError(e); }
+}
+
+async function loadActivity() {
+    try {
+        const r = await api('/api/insight/profiles');
+        const rows = r.data.filter(u => u.plays > 0).slice(0, 8);
+        const box = document.getElementById('users_box');
+        if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+        const max = Math.max(...rows.map(u => u.plays));
+        box.innerHTML = rows.map(u => `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+                <span style="width:88px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.username}</span>
+                <span class="bar" style="flex:1"><i style="width:${Math.round(u.plays / max * 100)}%"></i></span>
+                <span style="width:112px;text-align:right;font-size:12.5px;color:#64748b">
+                    ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)}
+                </span>
+            </div>`).join('');
+    } catch (e) { document.getElementById('users_box').innerHTML = '<div class="empty">加载失败</div>'; }
+}
+
+async function loadRecent() {
+    try {
+        const r = await api('/api/history?per_page=10');
+        const rows = r.data.data;
+        const box = document.getElementById('recent_box');
+        if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
+        box.innerHTML = rows.map(p => `
+            <div style="padding:7px 0;border-bottom:1px solid #f1f5f9">
+                <div style="font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                    ${p.title}
+                    ${p.season_number != null && p.episode_number != null
+                        ? `<span class="faint" style="font-weight:400"> S${String(p.season_number).padStart(2,'0')}E${String(p.episode_number).padStart(2,'0')}</span>` : ''}
+                </div>
+                <div class="faint" style="font-size:12px">
+                    ${p.username} · ${p.update_time} · 进度 ${p.progress}%
+                </div>
+            </div>`).join('');
+    } catch (e) { document.getElementById('recent_box').innerHTML = '<div class="empty">加载失败</div>'; }
+}
+
+async function loadEngine() {
+    try {
+        const r = await api('/api/system/engine');
+        document.getElementById('snapshot_at').textContent = r.data.sqlite_snapshot_at || '—';
+        if (!r.data.sqlite_ok) {
+            alertBox.innerHTML = `<div class="alert alert-warn"><b>SQLite 引擎未就绪：</b>
+                ${r.data.sqlite_error || '未知原因'} —— 请检查挂载与 fn_db_path 设置。</div>`;
+        }
+    } catch (e) {}
+}
+
+document.getElementById('trend_days').onchange = loadTrend;
+window.addEventListener('resize', () => { if (trendChart) trendChart.resize(); });
+window.addEventListener('load', () => {
+    loadEngine(); loadOverview(); loadTrend(); loadActivity(); loadRecent();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+{% block title %}风云榜 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">内容风云榜</h1>
+    <p class="page-desc">按播放次数或累计时长排序的内容排行</p>
+</div>
+
+<div class="card">
+    <div id="alert"></div>
+    <div class="toolbar">
+        <select id="f_type">
+            <option value="all">全部</option>
+            <option value="movie">电影</option>
+            <option value="series">剧集</option>
+            <option value="episode">单集</option>
+        </select>
+        <select id="f_order">
+            <option value="plays">按播放次数</option>
+            <option value="duration">按累计时长</option>
+        </select>
+        <select id="f_user"><option value="">全服</option></select>
+        <select id="f_limit">
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+            <option value="100">Top 100</option>
+        </select>
+        <button id="btn_query" class="btn-primary btn-sm">查询</button>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th style="width:42px">#</th>
+                <th>影片</th>
+                <th>类型</th>
+                <th>上映</th>
+                <th class="num">播放次数</th>
+                <th class="num">累计时长</th>
+                <th>最后播放</th>
+            </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+async function load() {
+    const alertBox = document.getElementById('alert');
+    alertBox.innerHTML = '';
+    const p = new URLSearchParams({
+        type: document.getElementById('f_type').value,
+        order: document.getElementById('f_order').value,
+        limit: document.getElementById('f_limit').value
+    });
+    const u = document.getElementById('f_user').value;
+    if (u) p.set('user_guid', u);
+
+    try {
+        const r = await api('/api/content/top?' + p.toString());
+        const rows = r.data;
+        const tbody = document.getElementById('tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">没有匹配的记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((it, i) => `
+            <tr>
+                <td class="num mono">${MEDALS[i] || (i + 1)}</td>
+                <td>
+                    <div style="font-weight:550;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                        ${it.title}
+                    </div>
+                    <div class="faint" style="font-size:12px">${it.original_title || ''}</div>
+                    ${it.season_number != null && it.episode_number != null
+                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(it.season_number).padStart(2,'0')}E${String(it.episode_number).padStart(2,'0')}</span>` : ''}
+                </td>
+                <td><span class="badge">${it.item_type || '—'}</span></td>
+                <td class="mono dim">${it.release_date || '—'}</td>
+                <td class="num mono">${fmt.n(it.plays)}</td>
+                <td class="num mono">${fmt.hours(it.hours)}</td>
+                <td class="mono dim">${it.last_play || '—'}</td>
+            </tr>`).join('');
+    } catch (e) {
+        alertBox.innerHTML = `<div class="alert alert-err">${e.message}</div>`;
+    }
+}
+
+async function loadUsers() {
+    try {
+        const r = await api('/api/users');
+        document.getElementById('f_user').innerHTML =
+            '<option value="">全服</option>' +
+            r.data.map(u => `<option value="${u.guid}">${u.username}</option>`).join('');
+    } catch (e) {}
+}
+
+document.getElementById('btn_query').onclick = load;
+document.getElementById('f_type').onchange = load;
+document.getElementById('f_order').onchange = load;
+window.addEventListener('load', () => { loadUsers(); load(); });
+</script>
+{% endblock %}

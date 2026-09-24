@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}FnPulse · 飞牛映迹{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
+</head>
+<body>
+{% block body %}
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-mark">影</div>
+            <div>
+                <div class="brand-name">FnPulse</div>
+                <div class="brand-sub">飞牛映迹</div>
+            </div>
+        </div>
+
+        <nav>
+            {% for item in nav %}
+            <a class="nav-item {% if active == item.key %}active{% endif %}" href="{{ item.path }}">
+                <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
+            </a>
+            {% endfor %}
+        </nav>
+
+        <div class="sidebar-foot">
+            数据源 {{ engine_mode | default('sqlite') }}<br>
+            v{{ version }}
+        </div>
+    </aside>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+{% endblock %}
+
+<script>
+/* 统一的 API 访问助手：401 自动跳登录，统一解包。 */
+window.api = async function (url, options) {
+    const res = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}));
+    if (res.status === 401) { location.href = '/login'; throw new Error('未登录'); }
+    let body;
+    try { body = await res.json(); } catch (e) { throw new Error('响应不是合法 JSON'); }
+    if (body.status === 'error') throw new Error(body.message || '请求失败');
+    return body;
+};
+
+/* 数字格式化 */
+window.fmt = {
+    n: v => (v == null ? '—' : Number(v).toLocaleString('zh-CN')),
+    hours: v => (v == null ? '—' : Number(v).toFixed(1) + ' h'),
+};
+
+/* 简易条形图兜底：CDN 不可用时用它替代 ECharts */
+window.fallbackBars = function (el, rows, labelKey, valueKey, unit) {
+    const max = Math.max(1, ...rows.map(r => Number(r[valueKey]) || 0));
+    el.innerHTML = rows.map(r => {
+        const w = Math.round((Number(r[valueKey] || 0) / max) * 100);
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12.5px">
+            <span style="width:74px;color:#64748b">${r[labelKey]}</span>
+            <span class="bar" style="flex:1"><i style="width:${w}%"></i></span>
+            <span style="width:78px;text-align:right">${r[valueKey]}${unit || ''}</span>
+        </div>`;
+    }).join('');
+};
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

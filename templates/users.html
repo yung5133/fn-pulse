@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+{% block title %}用户中心 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">用户中心</h1>
+    <p class="page-desc">飞牛影视账号为只读展示；备注 / 到期日 / 是否计入统计 保存在本地业务库</p>
+</div>
+
+<div id="alert" class="alert alert-info">
+    账号的创建、改密、删除请在飞牛影视中操作，本面板不提供写操作 —— 这是为了规避
+    直接改写 trimmedia.db 造成的数据损坏风险。本地可维护的是：备注、到期日、是否计入统计。
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th>用户名</th>
+                <th>身份</th>
+                <th class="num">播放次数</th>
+                <th class="num">累计时长</th>
+                <th>最后播放</th>
+                <th>最后登录</th>
+                <th>备注</th>
+                <th>计入统计</th>
+                <th style="width:80px"></th>
+            </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="9" class="empty">加载中…</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
+     align-items:center;justify-content:center;z-index:50">
+    <div class="card" style="width:400px;max-width:calc(100vw - 32px)">
+        <h2 class="card-title" id="modal_title">编辑用户</h2>
+        <div id="modal_msg"></div>
+        <input type="hidden" id="m_guid">
+        <input type="hidden" id="m_username">
+        <label class="field"><span>备注</span><input type="text" id="m_note" placeholder="例如：朋友账号"></label>
+        <label class="field"><span>到期日期</span><input type="date" id="m_expire"></label>
+        <label class="field" style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="m_hidden" style="width:auto">
+            <span style="margin:0">从统计中隐藏</span>
+        </label>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+            <button onclick="closeModal()">取消</button>
+            <button class="btn-primary" onclick="saveMeta()">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modal = document.getElementById('modal');
+
+function openModal(u) {
+    document.getElementById('m_guid').value = u.guid;
+    document.getElementById('m_username').value = u.username;
+    document.getElementById('m_note').value = u.note || '';
+    document.getElementById('m_expire').value = u.expire_date || '';
+    document.getElementById('m_hidden').checked = !!u.is_hidden;
+    document.getElementById('modal_title').textContent = '编辑：' + u.username;
+    document.getElementById('modal_msg').innerHTML = '';
+    modal.style.display = 'flex';
+}
+function closeModal() { modal.style.display = 'none'; }
+
+async function saveMeta() {
+    try {
+        await api('/api/users/meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_guid: document.getElementById('m_guid').value,
+                username: document.getElementById('m_username').value,
+                note: document.getElementById('m_note').value,
+                expire_date: document.getElementById('m_expire').value,
+                is_hidden: document.getElementById('m_hidden').checked
+            })
+        });
+        closeModal();
+        load();
+    } catch (e) {
+        document.getElementById('modal_msg').innerHTML =
+            `<div class="alert alert-err">${e.message}</div>`;
+    }
+}
+
+async function load() {
+    try {
+        const r = await api('/api/users');
+        const rows = r.data;
+        const tbody = document.getElementById('tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="9" class="empty">没有用户</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(u => `
+            <tr>
+                <td>
+                    <div style="font-weight:550">${u.username}</div>
+                    <div class="faint mono" style="font-size:11px">${u.guid.slice(0, 12)}…</div>
+                </td>
+                <td>
+                    ${u.is_admin ? '<span class="badge badge-info">管理员</span>' : '<span class="badge">普通</span>'}
+                    ${u.status != 1 ? '<span class="badge badge-err" style="margin-left:4px">已停用</span>' : ''}
+                </td>
+                <td class="num mono">${fmt.n(u.plays)}</td>
+                <td class="num mono">${fmt.hours(u.hours)}</td>
+                <td class="mono dim">${u.last_play || '—'}</td>
+                <td class="mono dim">${u.last_login || '—'}</td>
+                <td class="dim">${u.note || '<span class="faint">—</span>'}</td>
+                <td>
+                    ${u.is_hidden
+                        ? '<span class="badge badge-warn">已隐藏</span>'
+                        : '<span class="badge badge-ok">计入</span>'}
+                </td>
+                <td class="row-actions">
+                    <button class="btn-sm" onclick='openModal(${JSON.stringify(u)})'>编辑</button>
+                </td>
+            </tr>`).join('');
+    } catch (e) {
+        document.getElementById('alert').className = 'alert alert-err';
+        document.getElementById('alert').textContent = e.message;
+    }
+}
+
+window.addEventListener('load', load);
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+</script>
+{% endblock %}
