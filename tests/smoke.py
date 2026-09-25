@@ -160,6 +160,41 @@ def main() -> int:
           json={"username": "a", "password": "12"})
     check("POST", "/api/system/engine/refresh", 200)
     check("POST", "/api/system/test/connection", 200)
+
+    # ---- 选片搜索：CI 不打外网，走确定性的降级路径 + 解析器单元测试 ----
+    r = c.get("/api/requests/config").json()["data"]
+    results.append(("搜索源默认为豆瓣", r.get("search_source") == "douban", str(r)))
+
+    # 切到 TMDB 且无 Key：必须优雅降级（200 + 空结果 + 提示），而不是报错。
+    # 注意要在登录态下改配置，否则 POST /api/system/settings 会 401 而不生效。
+    c.post("/api/system/settings", json={"data": {"search_source": "tmdb"}})
+    rr = c.get("/api/requests/search?query=Dune").json()
+    results.append(("TMDB 无 Key 优雅降级",
+                    rr.get("search_source") == "tmdb" and rr.get("data") == []
+                    and bool(rr.get("message")), str(rr)[:120]))
+    c.post("/api/system/settings", json={"data": {"search_source": "douban"}})
+
+    # 豆瓣解析器：纯函数离线验证，不依赖豆瓣可用性
+    from app.routers.requests import _parse_douban_suggest
+    canned = [
+        {"title": "沙丘", "year": "2021", "sub_type": "movie", "id": "35267208",
+         "img": "https://img1.doubanio.com/view/photo/s_ratio_poster/p1.jpg"},
+        {"title": "沙丘", "year": "2000", "sub_type": "tv", "id": "1395364",
+         "img": "https://img9.doubanio.com/view/photo/s_ratio_poster/p2.jpg"},
+        {"title": "", "sub_type": "movie", "id": "1", "img": ""},
+        "not-a-dict",
+    ]
+    parsed = _parse_douban_suggest(canned)
+    ok_parse = (
+        len(parsed) == 2
+        and parsed[0]["media_type"] == "movie"
+        and parsed[0]["external_source"] == "douban"
+        and parsed[0]["poster_url"].endswith("m_ratio_poster/p1.jpg")
+        and parsed[1]["media_type"] == "series"
+        and parsed[1]["year"] == "2000"
+    )
+    results.append(("豆瓣解析器（类型映射/海报放大/脏数据过滤）", ok_parse, str(parsed)[:160]))
+
     check("GET", "/logout", 302)
     check("GET", "/", 302)
 
@@ -168,13 +203,13 @@ def main() -> int:
     check("POST", "/api/requests/submit", 200, json={
         "title": "沙丘 3", "requester": "alice", "media_type": "series",
         "season": 2, "year": "2026", "note": "要 4K",
-        "tmdb_id": 693134, "poster_path": "/x.jpg", "overview": "续集",
+        "external_source": "douban", "external_id": 35267208,
+        "poster_url": "https://img1.doubanio.com/view/photo/m_ratio_poster/x.jpg",
+        "overview": "续集",
     })
     # 空片名/空用户名必须被拒绝
     check("POST", "/api/requests/submit", 422, json={"title": "", "requester": "alice"})
     check("POST", "/api/requests/submit", 422, json={"title": "x", "requester": ""})
-    # TMDB 搜索：无 Key 时必须优雅降级（200 + 空结果 + 提示），而不是报错
-    check("GET", "/api/requests/search?query=Dune", 200)
     check("GET", "/api/requests/mine?requester=alice", 200)
     check("GET", "/request", 200)
 

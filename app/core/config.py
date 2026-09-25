@@ -59,6 +59,8 @@ DEFAULT_CONFIG = {
     # 提交需附加口令，避免对外开放时被滥用。
     "request_enabled": True,
     "request_passcode": "",
+    # 选片搜索源：douban（默认，无需任何 Key）/ tmdb（需 tmdb_api_key，国内要代理）
+    "search_source": "douban",
 }
 
 _LOCK = threading.RLock()

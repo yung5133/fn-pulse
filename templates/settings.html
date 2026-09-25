@@ -101,6 +101,13 @@
         <span style="margin:0">开放求片通道</span>
     </label>
     <label class="field">
+        <span>选片搜索源</span>
+        <select id="search_source">
+            <option value="douban">豆瓣（默认，无需 Key）</option>
+            <option value="tmdb">TMDB（需 API Key，国内需代理）</option>
+        </select>
+    </label>
+    <label class="field">
         <span>提交口令（留空表示不要求）</span>
         <input type="text" id="request_passcode" autocomplete="new-password">
     </label>
@@ -130,7 +137,7 @@
 <script>
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
-              'fn_secret_string', 'fn_api_key'];
+              'fn_secret_string', 'fn_api_key', 'search_source'];
 // 复选框单独处理（不是文本框）
 const BOOL_KEYS = ['request_enabled'];
 // 求片口令：留空表示不要求口令

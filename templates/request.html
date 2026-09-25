@@ -97,7 +97,8 @@ fetch('/api/requests/config', {credentials: 'same-origin'})
             msg('alert-warn', '求片通道当前已关闭，请联系管理员。');
             $('submit').disabled = true;
         }
-        if (d.tmdb_enabled) buildSearchBox();
+        if (d.search_source) SEARCH_SOURCE = d.search_source;
+        buildSearchBox();
     })
     .catch(() => {});
 
@@ -106,13 +107,17 @@ $('media_type').onchange = () => {
 };
 $('media_type').dispatchEvent(new Event('change'));
 
-/* ---- TMDB 搜索（未配置 Key 时自动隐藏，手填片名始终可用） ---- */
+/* ---- 选片搜索：豆瓣（默认，无需 Key）/ TMDB，由后台 search_source 决定 ---- */
 let selected = null;
+let SEARCH_SOURCE = 'douban';
 
 function buildSearchBox() {
+    const label = SEARCH_SOURCE === 'tmdb'
+        ? '搜索 TMDB，从海报墙选片'
+        : '搜索豆瓣，从海报墙选片';
     $('search_box').innerHTML = `
         <label class="field" style="display:flex;gap:8px">
-            <input type="text" id="search_q" placeholder="搜索 TMDB，从海报墙选片"
+            <input type="text" id="search_q" placeholder="${label}"
                    style="flex:1" autocomplete="off">
             <button id="btn_search" class="btn-primary btn-sm">搜索</button>
         </label>`;
@@ -138,13 +143,14 @@ async function doSearch() {
             <div class="tmdb-row" data-p='${JSON.stringify(m).replace(/'/g, "&#39;")}'
                  style="display:flex;gap:10px;padding:7px;border:1px solid #e3e8ef;
                         border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center">
-                ${m.poster_path
-                    ? `<img src="https://image.tmdb.org/t/p/w92${m.poster_path}"
+                ${m.poster_url
+                    ? `<img src="${m.poster_url}"
                            style="width:34px;height:50px;object-fit:cover;border-radius:5px">`
                     : `<div style="width:34px;height:50px;background:#eef1f5;border-radius:5px"></div>`}
                 <div style="min-width:0;flex:1">
                     <div style="font-weight:550">${m.title}
                         <span class="faint" style="font-weight:400">${m.year || ''}</span>
+                        ${m.rating ? `<span class="badge badge-info" style="margin-left:4px">${m.rating}</span>` : ''}
                     </div>
                     <div class="faint" style="font-size:11.5px">
                         ${m.overview || ''}
@@ -188,8 +194,9 @@ $('submit').onclick = async () => {
                 year: $('year').value.trim(),
                 note: $('note').value.trim(),
                 passcode: $('passcode').value,
-                tmdb_id: selected ? selected.tmdb_id : null,
-                poster_path: selected ? (selected.poster_path || '') : '',
+                external_source: selected ? (selected.external_source || '') : '',
+                external_id: selected ? (selected.external_id || null) : null,
+                poster_url: selected ? (selected.poster_url || '') : '',
                 overview: selected ? (selected.overview || '') : ''
             })
         });

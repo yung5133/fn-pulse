@@ -49,7 +49,7 @@ def _row(r) -> dict:
         "status_badge": STATUS_BADGE.get(status, "badge"),
         "admin_note": d["admin_note"] or "",
         "tmdb_id": d.get("tmdb_id"),
-        "poster_path": d.get("poster_path") or "",
+        "poster_url": d.get("poster_path") or "",   # 列名沿用 poster_path，存的是完整 URL
         "overview": d.get("overview") or "",
         "created_at": d["created_at"],
         "updated_at": d["updated_at"],
@@ -65,8 +65,10 @@ class SubmitModel(BaseModel):
     year: str = ""
     note: str = ""
     passcode: str = ""
-    tmdb_id: Optional[int] = None
-    poster_path: str = ""
+    # 来自选片搜索的元数据；手填片名时三者皆空
+    external_source: str = ""      # douban / tmdb
+    external_id: Optional[int] = None
+    poster_url: str = ""           # 海报完整 URL
     overview: str = ""
 
 
@@ -76,23 +78,56 @@ def portal_config():
     return ok({
         "enabled": bool(cfg.get("request_enabled", True)),
         "need_passcode": bool(cfg.get("request_passcode", "")),
+        "search_source": _search_source(),
         "tmdb_enabled": bool(cfg.get("tmdb_api_key", "")),
     })
 
 
+def _search_source() -> str:
+    """选片搜索源。豆瓣无需任何 Key（默认），TMDB 需要自行申请。"""
+    src = str(cfg.get("search_source", "douban")).lower()
+    return src if src in ("douban", "tmdb") else "douban"
+
+
+# 统一 UA：豆瓣对无 UA / 爬虫 UA 的请求会拒绝或返回验证页
+_DOUBAN_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+
 @router.get("/search")
-def search_tmdb(query: str = ""):
+def search(query: str = ""):
     """
-    门户端搜索 TMDB，用于"从全站大厅选片"。
-    未配置 tmdb_api_key 时返回明确提示而非报错 —— 手填片名的旧路径始终可用。
+    门户端搜索选片，用于"从海报墙选片"。
+
+    数据源由 search_source 决定：
+        douban（默认）  movie.douban.com/j/subject_suggest —— 无需任何 Key，
+                        国内访问也无墙；缺点是联想接口不给剧情简介与评分
+        tmdb            api.themoviedb.org —— 信息更全，但需要 API Key 且国内需代理
+
+    两条路径都失败时返回明确提示而非报错 —— 手填片名的旧路径始终可用。
     """
     query = (query or "").strip()
     if not query:
         return ok([])
+
+    if _search_source() == "tmdb":
+        items, message = _search_tmdb(query)
+        source = "tmdb"
+    else:
+        items, message = _search_douban(query)
+        source = "douban"
+
+    if message and not items:
+        return ok([], search_source=source, message=message)
+    return ok(items, search_source=source, message=message or "")
+
+
+def _search_tmdb(query: str):
     key = cfg.get("tmdb_api_key", "")
     if not key:
-        return ok([], tmdb_enabled=False,
-                  message="未配置 TMDB API Key，仅支持手填片名。可在后台「系统设置」填写。")
+        return [], "已切换为 TMDB 搜索但未配置 API Key。可在后台「系统设置」填写，或把搜索源改回豆瓣。"
 
     proxy = cfg.get("proxy_url", "")
     proxies = {"http": proxy, "https": proxy} if proxy else None
@@ -106,7 +141,7 @@ def search_tmdb(query: str = ""):
         resp.raise_for_status()
         payload = resp.json()
     except Exception as e:  # noqa: BLE001
-        return ok([], tmdb_enabled=True, message=f"TMDB 查询失败：{e}")
+        return [], f"TMDB 查询失败：{e}"
 
     out = []
     for item in (payload.get("results") or [])[:18]:
@@ -114,18 +149,68 @@ def search_tmdb(query: str = ""):
         mtype = item.get("media_type")
         if mtype not in ("movie", "tv"):
             continue
-        title = item.get("title") or item.get("name") or ""
-        date = item.get("release_date") or item.get("first_air_date") or ""
+        path = item.get("poster_path") or ""
         out.append({
-            "tmdb_id": item.get("id"),
+            "external_source": "tmdb",
+            "external_id": item.get("id"),
             "media_type": "movie" if mtype == "movie" else "series",
-            "title": title,
-            "year": date[:4] if date else "",
-            "poster_path": item.get("poster_path") or "",
+            "title": item.get("title") or item.get("name") or "",
+            "year": (item.get("release_date") or item.get("first_air_date") or "")[:4],
+            "poster_url": f"https://image.tmdb.org/t/p/w342{path}" if path else "",
             "overview": (item.get("overview") or "")[:300],
             "rating": item.get("vote_average") or 0,
         })
-    return ok(out, tmdb_enabled=True)
+    return out, ""
+
+
+def _parse_douban_suggest(payload) -> list:
+    """
+    解析 /j/subject_suggest 的返回。独立成纯函数便于离线测试，
+    不发网络请求 —— CI 不依赖豆瓣可用性。
+    """
+    out = []
+    for item in (payload or [])[:18]:
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("title") or "").strip()
+        if not title:
+            continue
+        sub_type = (item.get("sub_type") or "").lower()
+        img = (item.get("img") or "").strip()
+        # 豆瓣返回的是 s_ratio_poster 小图，换成更大的 m 尺寸
+        if "s_ratio_poster" in img:
+            img = img.replace("s_ratio_poster", "m_ratio_poster")
+        out.append({
+            "external_source": "douban",
+            "external_id": item.get("id"),
+            "media_type": "series" if sub_type == "tv" else "movie",
+            "title": title,
+            "year": str(item.get("year") or ""),
+            "poster_url": img,
+            "overview": "",      # 联想接口不给简介
+            "rating": 0,
+        })
+    return out
+
+
+def _search_douban(query: str):
+    try:
+        import requests as _requests
+        resp = _requests.get(
+            "https://movie.douban.com/j/subject_suggest",
+            params={"q": query, "_sync": 1},
+            headers={"User-Agent": _DOUBAN_UA, "Referer": "https://movie.douban.com/"},
+            timeout=12,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as e:  # noqa: BLE001
+        return [], f"豆瓣查询失败：{e}"
+
+    items = _parse_douban_suggest(payload)
+    if not items:
+        return [], "豆瓣没有匹配结果，可直接手填片名。"
+    return items, ""
 
 
 @router.post("/submit")
@@ -139,6 +224,8 @@ def submit(data: SubmitModel):
 
     media_type = data.media_type if data.media_type in ("movie", "series", "episode") else "movie"
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+    # tmdb_id 列沿用为"外部条目 ID"，豆瓣条目不写该列（避免语义混淆）
+    external_id = data.external_id if data.external_source == "tmdb" else None
 
     db.execute(
         """INSERT INTO media_requests
@@ -148,7 +235,7 @@ def submit(data: SubmitModel):
         (data.title.strip(), media_type, max(0, int(data.season or 0)),
          (data.year or "").strip()[:16], (data.note or "").strip()[:500],
          data.requester.strip(),
-         data.tmdb_id, (data.poster_path or "").strip()[:200],
+         external_id, (data.poster_url or "").strip()[:400],
          (data.overview or "").strip()[:600],
          now, now),
     )

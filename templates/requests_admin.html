@@ -144,8 +144,8 @@ async function load() {
                 <td class="num mono dim">${x.id}</td>
                 <td>
                     <div style="display:flex;gap:9px;align-items:center">
-                        ${x.poster_path
-                            ? `<img src="https://image.tmdb.org/t/p/w92${x.poster_path}"
+                        ${x.poster_url
+                            ? `<img src="${x.poster_url}"
                                    style="width:30px;height:44px;object-fit:cover;border-radius:4px">`
                             : ''}
                         <div style="min-width:0">

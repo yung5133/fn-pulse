@@ -26,7 +26,7 @@ WRITABLE_KEYS = {
     "playback_data_mode", "fn_db_path", "db_copy_ttl",
     "hidden_users", "timezone_offset_hours",
     "tmdb_api_key", "proxy_url", "webhook_token",
-    "request_enabled", "request_passcode",
+    "request_enabled", "request_passcode", "search_source",
 }
 
 
@@ -66,6 +66,10 @@ def save_settings(body: SettingsModel, _=Depends(require_login)):
             v = bool(v)
         if k == "request_passcode":
             v = str(v).strip()
+        if k == "search_source":
+            v = str(v).lower()
+            if v not in ("douban", "tmdb"):
+                continue
         updates[k] = v
 
     if updates:
