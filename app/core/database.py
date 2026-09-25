@@ -105,6 +105,7 @@ def ensure_schema(force: bool = False) -> None:
                 ("overview", "ALTER TABLE media_requests ADD COLUMN overview TEXT DEFAULT ''"),
                 ("mp_subscribe_id", "ALTER TABLE media_requests ADD COLUMN mp_subscribe_id INTEGER"),
                 ("mp_sent_at", "ALTER TABLE media_requests ADD COLUMN mp_sent_at TEXT"),
+                ("douban_id", "ALTER TABLE media_requests ADD COLUMN douban_id TEXT"),
             ):
                 try:
                     cur.execute(_ddl)

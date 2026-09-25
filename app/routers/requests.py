@@ -50,6 +50,7 @@ def _row(r) -> dict:
         "status_badge": STATUS_BADGE.get(status, "badge"),
         "admin_note": d["admin_note"] or "",
         "tmdb_id": d.get("tmdb_id"),
+        "douban_id": d.get("douban_id") or "",
         "poster_url": d.get("poster_path") or "",   # 列名沿用 poster_path，存的是完整 URL
         "overview": d.get("overview") or "",
         "mp_subscribe_id": d.get("mp_subscribe_id"),
@@ -227,18 +228,19 @@ def submit(data: SubmitModel):
 
     media_type = data.media_type if data.media_type in ("movie", "series", "episode") else "movie"
     now = time.strftime("%Y-%m-%d %H:%M:%S")
-    # tmdb_id 列沿用为"外部条目 ID"，豆瓣条目不写该列（避免语义混淆）
-    external_id = data.external_id if data.external_source == "tmdb" else None
+    # 外部 ID 分列保存：MP 下发时 tmdb 走 tmdbid，豆瓣走 doubanid
+    tmdb_id = data.external_id if data.external_source == "tmdb" else None
+    douban_id = str(data.external_id) if data.external_source == "douban" and data.external_id else None
 
     db.execute(
         """INSERT INTO media_requests
            (title, media_type, season, year, note, requester, status, admin_note,
-            tmdb_id, poster_path, overview, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?)""",
+            tmdb_id, douban_id, poster_path, overview, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?)""",
         (data.title.strip(), media_type, max(0, int(data.season or 0)),
          (data.year or "").strip()[:16], (data.note or "").strip()[:500],
          data.requester.strip(),
-         external_id, (data.poster_url or "").strip()[:400],
+         tmdb_id, douban_id, (data.poster_url or "").strip()[:400],
          (data.overview or "").strip()[:600],
          now, now),
     )
@@ -334,6 +336,7 @@ def dispatch(request_id: int, data: DispatchModel, _=Depends(require_login)):
     year = (data.year or req.get("year") or "").strip()
     media_type = data.media_type or "movie"
     season = max(0, int(data.season or req.get("season") or 0))
+    douban_id = str(req.get("douban_id") or "").strip()
 
     chosen = None
     if data.external_source == "tmdb" and data.external_id:
@@ -341,6 +344,15 @@ def dispatch(request_id: int, data: DispatchModel, _=Depends(require_login)):
             "media_type": media_type, "title": title, "year": year,
             "external_source": "tmdb", "external_id": data.external_id,
             "poster_url": data.poster_url, "overview": data.overview,
+        }
+    elif douban_id:
+        # 豆瓣来源直接带 doubanid 下发，跳过 MP 搜索 —— MP 原生支持豆瓣订阅。
+        # 华语新剧/冷门剧在 MP 的元数据源里常常搜不到，按标题搜索是死路。
+        chosen = {
+            "media_type": media_type, "title": title, "year": year,
+            "external_source": "douban", "douban_id": douban_id,
+            "poster_url": data.poster_url or req.get("poster_path") or "",
+            "overview": data.overview or req.get("overview") or "",
         }
     else:
         try:
@@ -363,7 +375,11 @@ def dispatch(request_id: int, data: DispatchModel, _=Depends(require_login)):
             })
         else:
             return {"status": "error",
-                    "message": f"MoviePilot 中没有搜到「{title}」，请手动在 MP 里处理"}
+                    "message": (f"MoviePilot 按「{title}」未搜到条目"
+                                f"（接口返回 {len(candidates)} 条）。"
+                                f"MP 的搜索依赖其元数据源，新剧/冷门内容可能未收录；"
+                                f"建议在 MP 中手动搜索确认，或让用户从豆瓣选片重新提交"
+                                f"（豆瓣来源可按 ID 直接下发）。")}
 
     payload = moviepilot_client.build_subscribe_payload(chosen, season=season)
     try:

@@ -176,20 +176,26 @@ class MoviePilotClient:
         """
         组装 Subscribe JSON。type 必须是中文枚举。
         纯函数，便于离线测试 —— 这是与 MoviePilot 对齐的关键接缝。
+
+        外部 ID 按来源二选一：
+            tmdb   -> tmdbid
+            douban -> doubanid   （MP 原生支持豆瓣订阅，冷门华语剧也能订阅）
+        两者都没有时不带 ID 字段（MP 会按名称识别，成功率较低）。
         """
         media_type = media.get("media_type") or "movie"
         payload: Dict[str, Any] = {
             "name": media.get("title") or "",
             "type": "电影" if media_type == "movie" else "电视剧",
             "year": str(media.get("year") or ""),
-            "tmdbid": media.get("external_id"),
             "poster": media.get("poster_url") or "",
             "description": (media.get("overview") or note or "")[:500],
         }
         if media_type != "movie":
             payload["season"] = max(1, int(season or 1))
-        if not payload["tmdbid"]:
-            payload.pop("tmdbid", None)
+        if str(media.get("external_source") or "") == "douban" and media.get("douban_id"):
+            payload["doubanid"] = str(media["douban_id"])
+        elif media.get("external_id"):
+            payload["tmdbid"] = media["external_id"]
         return payload
 
     def add_subscribe(self, payload: dict) -> Tuple[bool, str, Optional[int]]:

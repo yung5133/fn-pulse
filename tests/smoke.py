@@ -240,7 +240,11 @@ def main() -> int:
     # 空片名/空用户名必须被拒绝
     check("POST", "/api/requests/submit", 422, json={"title": "", "requester": "alice"})
     check("POST", "/api/requests/submit", 422, json={"title": "x", "requester": ""})
-    check("GET", "/api/requests/mine?requester=alice", 200)
+    # 豆瓣 ID 必须持久化 —— 这是 MP 下发的关键（MP 原生支持豆瓣订阅）
+    mine = c.get("/api/requests/mine?requester=alice").json()["data"]
+    dr = [x for x in mine if x["title"] == "沙丘 3"]
+    results.append(("豆瓣 external_id 已持久化为 douban_id",
+                    bool(dr) and dr[0].get("douban_id") == "35267208", str(dr)[:120]))
     check("GET", "/request", 200)
 
     # ---- 求片：管理端必须先登录（此时已 logout）----
@@ -292,6 +296,17 @@ def main() -> int:
     tv_payload = _mp.build_subscribe_payload(
         {"media_type": "series", "title": "怪奇物语", "year": "2016",
          "external_id": 66732}, season=2)
+    # 豆瓣来源可直接按 doubanid 下发（不走 MP 搜索）—— 冷门华语剧的关键路径
+    douban_payload = _mp.build_subscribe_payload(
+        {"media_type": "series", "title": "兰香如故", "year": "2026",
+         "external_source": "douban", "douban_id": "36081234",
+         "poster_url": "u", "overview": "o"}, season=1)
+    results.append(("MP 载荷 豆瓣来源带 doubanid 且不带 tmdbid",
+                    douban_payload.get("doubanid") == "36081234"
+                    and douban_payload.get("type") == "电视剧"
+                    and "tmdbid" not in douban_payload
+                    and douban_payload.get("season") == 1,
+                    str(douban_payload)[:160]))
     results.append(("MP 载荷 电影 -> 电影", movie_payload.get("type") == "电影"
                     and movie_payload.get("tmdbid") == 438148
                     and "season" not in movie_payload, str(movie_payload)[:140]))
