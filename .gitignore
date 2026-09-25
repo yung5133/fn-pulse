@@ -18,3 +18,6 @@ static/img/*.psd
 
 # 临时提交说明文件
 .commitmsg.txt
+
+# 本地生成的对版快照（tools/make_preview.py 产出）
+preview/

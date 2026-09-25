@@ -19,7 +19,23 @@ BIZ_DB_PATH = os.path.join(CONFIG_DIR, "fnpulse.db")
 # 飞牛影视媒体库数据库（SQLite 引擎只读来源）
 DEFAULT_FN_DB = "/fn-data/trimmedia.db"
 
-APP_VERSION = os.getenv("APP_VERSION", "0.3.0")
+def _resolve_version() -> str:
+    """版本号单一来源：优先环境变量（镜像构建时注入），否则读仓库根的 VERSION 文件。"""
+    env = os.getenv("APP_VERSION", "").strip()
+    if env:
+        return env
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        with open(os.path.join(root, "VERSION"), encoding="utf-8") as fh:
+            value = fh.read().strip()
+            if value:
+                return value
+    except OSError:
+        pass
+    return "0.3.10"
+
+
+APP_VERSION = _resolve_version()
 
 DEFAULT_CONFIG = {
     # ---- 飞牛影视连接 ----

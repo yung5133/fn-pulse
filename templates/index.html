@@ -10,23 +10,35 @@
 <div id="alert"></div>
 
 <div class="grid grid-4" style="margin-bottom:16px">
-    <div class="card">
-        <div class="stat-label">媒体总量</div>
+    <div class="card stat-card">
+        <div class="stat-top">
+            <div class="stat-label">媒体总量</div>
+            <div class="icon-chip">▤</div>
+        </div>
         <div class="stat-value" id="s_total">—</div>
         <div class="stat-foot" id="s_total_foot">—</div>
     </div>
-    <div class="card">
-        <div class="stat-label">累计播放次数</div>
+    <div class="card stat-card">
+        <div class="stat-top">
+            <div class="stat-label">累计播放次数</div>
+            <div class="icon-chip">▶</div>
+        </div>
         <div class="stat-value" id="s_plays">—</div>
         <div class="stat-foot">今日 <span id="s_today">—</span> 次</div>
     </div>
-    <div class="card">
-        <div class="stat-label">累计观看时长</div>
+    <div class="card stat-card">
+        <div class="stat-top">
+            <div class="stat-label">累计观看时长</div>
+            <div class="icon-chip">◔</div>
+        </div>
         <div class="stat-value" id="s_hours">—<span class="stat-unit">小时</span></div>
         <div class="stat-foot">统计口径为已播进度累计</div>
     </div>
-    <div class="card">
-        <div class="stat-label">活跃用户</div>
+    <div class="card stat-card">
+        <div class="stat-top">
+            <div class="stat-label">活跃用户</div>
+            <div class="icon-chip">◍</div>
+        </div>
         <div class="stat-value" id="s_users">—</div>
         <div class="stat-foot">最近播放 <span id="s_latest">—</span></div>
     </div>
@@ -114,20 +126,20 @@ async function loadTrend() {
             grid: { left: 44, right: 20, top: 20, bottom: 30 },
             tooltip: { trigger: 'axis' },
             legend: { data: ['播放次数', '观看时长'], top: 0, right: 0, itemWidth: 12, itemHeight: 8 },
-            xAxis: { type: 'category', data: rows.map(r => r.date.slice(5)), axisLine: { lineStyle: { color: '#e3e8ef' } } },
+            xAxis: { type: 'category', data: rows.map(r => r.date.slice(5)), axisLine: { lineStyle: { color: cssVar('--border') } } },
             yAxis: [
-                { type: 'value', name: '次', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                { type: 'value', name: '次', splitLine: { lineStyle: { color: cssVar('--line-soft') } } },
                 { type: 'value', name: '小时', splitLine: { show: false } }
             ],
             series: [
                 {
                     name: '播放次数', type: 'line', smooth: true, showSymbol: false,
-                    data: rows.map(r => r.plays), itemStyle: { color: '#4f46e5' },
-                    areaStyle: { color: 'rgba(79,70,229,.10)' }
+                    data: rows.map(r => r.plays), itemStyle: { color: cssVar('--accent') },
+                    areaStyle: { color: cssVar('--accent-soft') }
                 },
                 {
                     name: '观看时长', type: 'bar', yAxisIndex: 1, barMaxWidth: 14,
-                    data: rows.map(r => r.hours), itemStyle: { color: 'rgba(124,58,237,.35)' }
+                    data: rows.map(r => r.hours), itemStyle: { color: cssVar('--accent-2'), opacity: .45 }
                 }
             ]
         });
@@ -145,7 +157,7 @@ async function loadActivity() {
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
                 <span style="width:88px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.username}</span>
                 <span class="bar" style="flex:1"><i style="width:${Math.round(u.plays / max * 100)}%"></i></span>
-                <span style="width:112px;text-align:right;font-size:12.5px;color:#64748b">
+                <span style="width:112px;text-align:right;font-size:12.5px;color:var(--text-dim)">
                     ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)}
                 </span>
             </div>`).join('');
@@ -159,8 +171,8 @@ async function loadRecent() {
         const box = document.getElementById('recent_box');
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
         box.innerHTML = rows.map(p => `
-            <div style="padding:7px 0;border-bottom:1px solid #f1f5f9">
-                <div style="font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <div class="list-row">
+                <div class="list-main" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                     ${p.title}
                     ${p.season_number != null && p.episode_number != null
                         ? `<span class="faint" style="font-weight:400"> S${String(p.season_number).padStart(2,'0')}E${String(p.episode_number).padStart(2,'0')}</span>` : ''}

@@ -92,7 +92,7 @@ async function loadTasks() {
         const box = document.getElementById('tasks');
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无记录</div>'; return; }
         box.innerHTML = rows.map(t => `
-            <div style="padding:9px 0;border-bottom:1px solid #f1f5f9">
+            <div class="list-row">
                 <div style="display:flex;justify-content:space-between;gap:8px">
                     <b>${t.library_name || t.library_guid}</b>
                     <span class="badge badge-${t.status === 'success' ? 'ok' : 'err'}">

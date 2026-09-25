@@ -3,14 +3,25 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#4f46e5">
     <title>{% block title %}FnPulse · 飞牛映迹{% endblock %}</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Ctext x='16' y='22' font-size='17' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3E%E5%BD%B1%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
 </head>
 <body>
 {% block body %}
+<!-- 移动端顶栏 -->
+<div class="topbar">
+    <div class="brand-mark">影</div>
+    <div class="topbar-title">FnPulse</div>
+    <button class="nav-toggle" id="nav_toggle" aria-label="展开导航">☰</button>
+</div>
+
+<div class="sidebar-mask" id="sidebar_mask"></div>
+
 <div class="app">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="brand">
             <div class="brand-mark">影</div>
             <div>
@@ -21,6 +32,9 @@
 
         <nav>
             {% for item in nav %}
+            {% if loop.first or nav[loop.index0 - 1].group != item.group %}
+            <div class="section-label">{{ item.group }}</div>
+            {% endif %}
             <a class="nav-item {% if active == item.key %}active{% endif %}" href="{{ item.path }}">
                 <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
             </a>
@@ -28,8 +42,8 @@
         </nav>
 
         <div class="sidebar-foot">
-            数据源 {{ engine_mode | default('sqlite') }}<br>
-            v{{ version }}
+            <span class="badge badge-info">{{ engine_mode | default('sqlite') }}</span>
+            <div style="margin-top:8px">v{{ version }}</div>
         </div>
     </aside>
 
@@ -40,7 +54,7 @@
 {% endblock %}
 
 <script>
-/* 统一的 API 访问助手：401 自动跳登录，统一解包。 */
+/* 统一 API 助手：401 自动跳登录，统一解包。 */
 window.api = async function (url, options) {
     const res = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}));
     if (res.status === 401) { location.href = '/login'; throw new Error('未登录'); }
@@ -56,18 +70,42 @@ window.fmt = {
     hours: v => (v == null ? '—' : Number(v).toFixed(1) + ' h'),
 };
 
+/* 读取 CSS 变量真实值 —— ECharts 画在 canvas 上，认不了 var()，必须先解析 */
+window.cssVar = function (name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback || '';
+};
+
 /* 简易条形图兜底：CDN 不可用时用它替代 ECharts */
 window.fallbackBars = function (el, rows, labelKey, valueKey, unit) {
     const max = Math.max(1, ...rows.map(r => Number(r[valueKey]) || 0));
     el.innerHTML = rows.map(r => {
         const w = Math.round((Number(r[valueKey] || 0) / max) * 100);
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:12.5px">
-            <span style="width:74px;color:#64748b">${r[labelKey]}</span>
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12.5px">
+            <span style="width:74px;color:var(--text-dim)">${r[labelKey]}</span>
             <span class="bar" style="flex:1"><i style="width:${w}%"></i></span>
             <span style="width:78px;text-align:right">${r[valueKey]}${unit || ''}</span>
         </div>`;
     }).join('');
 };
+
+/* 移动端导航抽屉 */
+(function () {
+    const sidebar = document.getElementById('sidebar');
+    const mask = document.getElementById('sidebar_mask');
+    const toggle = document.getElementById('nav_toggle');
+    if (!sidebar || !toggle) return;
+
+    const close = () => { sidebar.classList.remove('open'); mask.classList.remove('open'); };
+    toggle.onclick = () => {
+        const open = !sidebar.classList.contains('open');
+        sidebar.classList.toggle('open', open);
+        mask.classList.toggle('open', open);
+    };
+    mask.onclick = close;
+    sidebar.querySelectorAll('.nav-item').forEach(a => a.addEventListener('click', close));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+})();
 </script>
 {% block scripts %}{% endblock %}
 </body>

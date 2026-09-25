@@ -4,14 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>点片箱 · FnPulse 飞牛映迹</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Ctext x='16' y='22' font-size='17' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3E%E5%BD%B1%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
 <div class="login-wrap">
-    <div style="width:520px;max-width:calc(100vw - 32px)">
+    <div class="login-card login-shell" style="width:520px">
         <div class="card" style="margin-bottom:16px">
             <div class="card-head" style="flex-direction:column;align-items:center;gap:6px">
-                <div class="brand-mark" style="width:36px;height:36px;font-size:17px">影</div>
+                <div class="brand-mark">影</div>
                 <div style="text-align:center">
                     <div style="font-size:17px;font-weight:700">点片箱</div>
                     <div class="faint" style="font-size:12px">想看什么？告诉我们</div>
@@ -31,11 +32,8 @@
                     <span>密码</span>
                     <input type="password" id="p_password" autocomplete="current-password">
                 </label>
-                <button id="btn_login" class="btn-primary"
-                        style="width:100%;justify-content:center">登 录</button>
-                <div class="faint" style="margin-top:10px;font-size:12px;text-align:center">
-                    使用你登录飞牛影视的账号，用于确认求片人身份
-                </div>
+                <button id="btn_login" class="btn-primary btn-block">登 录</button>
+                <div class="login-meta">使用你登录飞牛影视的账号，用于确认求片人身份</div>
             </div>
 
             <!-- 已登录后的表单项 -->
@@ -87,9 +85,7 @@
                     <input type="password" id="passcode" autocomplete="new-password">
                 </label>
 
-                <button id="submit" class="btn-primary" style="width:100%;justify-content:center">
-                    提交求片
-                </button>
+                <button id="submit" class="btn-primary btn-block">提交求片</button>
                 <div style="margin-top:10px;text-align:center">
                     <a href="#" id="btn_logout" class="faint" style="font-size:12px">退出登录</a>
                 </div>
@@ -248,21 +244,16 @@ async function doSearch() {
             return;
         }
         $('results_list').innerHTML = rows.map(m => `
-            <div class="tmdb-row" data-p='${JSON.stringify(m).replace(/'/g, "&#39;")}'
-                 style="display:flex;gap:10px;padding:7px;border:1px solid #e3e8ef;
-                        border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center">
+            <div class="pick-row" data-p='${JSON.stringify(m).replace(/'/g, "&#39;")}'>
                 ${m.poster_url
-                    ? `<img src="${m.poster_url}"
-                           style="width:34px;height:50px;object-fit:cover;border-radius:5px">`
-                    : `<div style="width:34px;height:50px;background:#eef1f5;border-radius:5px"></div>`}
-                <div style="min-width:0;flex:1">
-                    <div style="font-weight:550">${m.title}
-                        <span class="faint" style="font-weight:400">${m.year || ''}</span>
-                        ${m.rating ? `<span class="badge badge-info" style="margin-left:4px">${m.rating}</span>` : ''}
+                    ? `<img class="pick-poster" src="${m.poster_url}" alt="">`
+                    : `<div class="pick-poster"></div>`}
+                <div class="pick-body">
+                    <div class="pick-title">${m.title}
+                        <span class="pick-year">${m.year || ''}</span>
+                        ${m.rating ? `<span class="badge badge-info">${m.rating}</span>` : ''}
                     </div>
-                    <div class="faint" style="font-size:11.5px">
-                        ${m.overview || ''}
-                    </div>
+                    <div class="pick-desc">${m.overview || ''}</div>
                 </div>
             </div>`).join('');
         $('search_results').style.display = 'block';
@@ -276,8 +267,8 @@ async function doSearch() {
 
 function pick(el) {
     selected = JSON.parse(el.dataset.p);
-    $('results_list').querySelectorAll('.tmdb-row').forEach(x => x.style.borderColor = '#e3e8ef');
-    el.style.borderColor = '#4f46e5';
+    $('results_list').querySelectorAll('.pick-row').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected');
     $('title').value = selected.title;
     $('year').value = selected.year || '';
     $('media_type').value = selected.media_type;
@@ -341,12 +332,12 @@ async function loadMine() {
             return;
         }
         $('mine').innerHTML = rows.map(x => `
-            <div style="padding:8px 0;border-bottom:1px solid #f1f5f9">
-                <div style="display:flex;justify-content:space-between;gap:8px">
+            <div class="list-row">
+                <div class="list-row-head">
                     <b>${x.title}${x.season ? ' 第' + x.season + '季' : ''}</b>
                     <span class="badge ${x.status_badge}">${x.status_text}</span>
                 </div>
-                <div class="faint" style="font-size:12px">
+                <div class="list-meta">
                     ${x.created_at}${x.admin_note ? ' · 管理员：' + x.admin_note : ''}
                 </div>
             </div>`).join('');

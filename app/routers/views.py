@@ -20,14 +20,14 @@ PKG_TEMPLATES = os.path.join(BASE_DIR, "templates")
 templates = Jinja2Templates(directory=PKG_TEMPLATES)
 
 NAV = [
-    {"key": "dashboard", "path": "/", "label": "仪表盘", "icon": "◧"},
-    {"key": "history", "path": "/history", "label": "播放历史", "icon": "▤"},
-    {"key": "content", "path": "/content", "label": "风云榜", "icon": "★"},
-    {"key": "users", "path": "/users", "label": "用户中心", "icon": "◍"},
-    {"key": "insight", "path": "/insight", "label": "数据洞察", "icon": "◉"},
-    {"key": "library", "path": "/library", "label": "媒体库", "icon": "▒"},
-    {"key": "requests", "path": "/requests_admin", "label": "求片管理", "icon": "◆"},
-    {"key": "settings", "path": "/settings", "label": "系统设置", "icon": "⚙"},
+    {"key": "dashboard", "path": "/", "label": "仪表盘", "icon": "◧", "group": "总览"},
+    {"key": "history", "path": "/history", "label": "播放历史", "icon": "▤", "group": "总览"},
+    {"key": "content", "path": "/content", "label": "风云榜", "icon": "★", "group": "总览"},
+    {"key": "users", "path": "/users", "label": "用户中心", "icon": "◍", "group": "洞察"},
+    {"key": "insight", "path": "/insight", "label": "数据洞察", "icon": "◉", "group": "洞察"},
+    {"key": "library", "path": "/library", "label": "媒体库", "icon": "▒", "group": "管理"},
+    {"key": "requests", "path": "/requests_admin", "label": "求片管理", "icon": "◆", "group": "管理"},
+    {"key": "settings", "path": "/settings", "label": "系统设置", "icon": "⚙", "group": "管理"},
 ]
 
 

@@ -49,9 +49,8 @@
     </div>
 </div>
 
-<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
-     align-items:center;justify-content:center;z-index:50">
-    <div class="card" style="width:420px;max-width:calc(100vw - 32px)">
+<div id="modal" class="modal-mask">
+    <div class="modal">
         <h2 class="card-title" id="modal_title">处理求片</h2>
         <div id="modal_msg"></div>
         <input type="hidden" id="m_id">
@@ -70,16 +69,15 @@
         </label>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
             <button onclick="closeModal()">取消</button>
-            <button id="btn_delete" style="color:#dc2626">删除</button>
+            <button id="btn_delete" class="btn-danger">删除</button>
             <button class="btn-primary" onclick="save()">保存</button>
         </div>
     </div>
 </div>
 
 <!-- MoviePilot 候选选择弹窗：同名条目不止一个时由管理员挑选 -->
-<div id="pick_modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
-     align-items:center;justify-content:center;z-index:60">
-    <div class="card" style="width:520px;max-width:calc(100vw - 32px)">
+<div id="pick_modal" class="modal-mask">
+    <div class="modal modal-wide">
         <h2 class="card-title" id="pick_title">选择 MoviePilot 条目</h2>
         <p class="faint" style="margin:4px 0 12px;font-size:12.5px" id="pick_msg"></p>
         <div id="pick_list" style="max-height:320px;overflow-y:auto"></div>
@@ -102,9 +100,9 @@ function openModal(r) {
     document.getElementById('m_note').value = r.admin_note || '';
     document.getElementById('modal_title').textContent = '处理：' + r.title;
     document.getElementById('modal_msg').innerHTML = '';
-    modal.style.display = 'flex';
+    modal.classList.add('open');
 }
-function closeModal() { modal.style.display = 'none'; }
+function closeModal() { modal.classList.remove('open'); }
 
 async function save() {
     try {
@@ -216,7 +214,7 @@ modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 let pickCtx = null;
 const pickModal = document.getElementById('pick_modal');
 
-function closePick() { pickModal.style.display = 'none'; }
+function closePick() { pickModal.classList.remove('open'); }
 
 async function dispatch(x, override) {
     const body = {
@@ -241,21 +239,19 @@ async function dispatch(x, override) {
             document.getElementById('pick_title').textContent = '选择：' + x.title;
             document.getElementById('pick_msg').textContent = d.message || '';
             document.getElementById('pick_list').innerHTML = d.candidates.map((m, i) => `
-                <div class="tmdb-row" data-i="${i}"
-                     style="display:flex;gap:10px;padding:7px;border:1px solid #e3e8ef;
-                            border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center">
+                <div class="pick-row" data-i="${i}">
                     ${m.poster_url
-                        ? `<img src="${m.poster_url}" style="width:34px;height:50px;object-fit:cover;border-radius:5px">`
-                        : `<div style="width:34px;height:50px;background:#eef1f5;border-radius:5px"></div>`}
-                    <div style="min-width:0;flex:1">
-                        <div style="font-weight:550">${m.title}
-                            <span class="faint" style="font-weight:400">${m.year || ''}</span>
-                            <span class="badge" style="margin-left:4px">${m.media_type}</span>
+                        ? `<img class="pick-poster" src="${m.poster_url}" alt="">`
+                        : `<div class="pick-poster"></div>`}
+                    <div class="pick-body">
+                        <div class="pick-title">${m.title}
+                            <span class="pick-year">${m.year || ''}</span>
+                            <span class="badge">${m.media_type}</span>
                         </div>
-                        <div class="faint" style="font-size:11.5px">${m.overview || ''}</div>
+                        <div class="pick-desc">${m.overview || ''}</div>
                     </div>
                 </div>`).join('');
-            pickModal.style.display = 'flex';
+            pickModal.classList.add('open');
             pickModal.querySelectorAll('.tmdb-row').forEach(el => {
                 el.onclick = () => {
                     closePick();

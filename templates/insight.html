@@ -61,10 +61,10 @@ async function loadHours() {
             grid: { left: 44, right: 16, top: 16, bottom: 30 },
             tooltip: { trigger: 'axis' },
             xAxis: { type: 'category', data: rows.map(r => String(r.hour).padStart(2, '0') + '时') },
-            yAxis: { type: 'value', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: cssVar('--line-soft') } } },
             series: [{
                 type: 'bar', data: rows.map(r => r.plays), barMaxWidth: 18,
-                itemStyle: { color: '#6366f1', borderRadius: [3, 3, 0, 0] }
+                itemStyle: { color: cssVar('--accent'), borderRadius: [3, 3, 0, 0] }
             }]
         });
     } catch (e) { showAlert(e); }

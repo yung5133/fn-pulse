@@ -26,6 +26,7 @@ jobs:
     # 把版本号透传给 merge job（step 输出不会自动跨 job）
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      build: ${{ steps.ver.outputs.build }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,10 +39,10 @@ jobs:
       - name: 计算版本号
         id: ver
         run: |
-          BASE=$(tr -d '[:space:]' < VERSION)
-          VERSION="${BASE}.${{ github.run_number }}"
+          VERSION=$(tr -d '[:space:]' < VERSION)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "本次构建版本: ${VERSION}"
+          echo "build=${VERSION}-r${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "本次版本: ${VERSION}（不可变构建号 ${VERSION}-r${{ github.run_number }}）"
 
       - name: 准备 QEMU（跨架构模拟）
         uses: docker/setup-qemu-action@v3
@@ -63,6 +64,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=${{ steps.ver.outputs.build }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=semver,pattern=v{{version}}
@@ -129,6 +131,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.build.outputs.version }}
+            type=raw,value=${{ needs.build.outputs.build }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=semver,pattern=v{{version}}
