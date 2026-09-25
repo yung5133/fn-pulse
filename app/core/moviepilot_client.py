@@ -10,9 +10,13 @@ MoviePilot 对接客户端。
     POST /api/v1/subscribe/           新增订阅（Subscribe JSON）
     GET  /api/v1/subscribe/           查询订阅
 
-两个易错点，均已处理：
+三个易错点，均已处理：
     * Subscribe.type 是中文枚举：电影 / 电视剧（不是 movie / tv）
     * 登录是 OAuth2 表单体，不是 JSON
+    * 鉴权必须用登录换来的 JWT（Authorization: Bearer <token>）。
+      MP 的静态 API_TOKEN **不是 JWT**，只在少数查询接口上有效
+      （如 /api/v1/subscribe/list），拿到订阅接口上会报
+      "token校验不通过" —— 因此这里不做静态令牌直连，一律账号密码登录。
 """
 
 import threading
@@ -56,19 +60,18 @@ class MoviePilotClient:
     def password(self) -> str:
         return cfg.get("mp_password", "")
 
-    @property
-    def static_token(self) -> str:
-        return cfg.get("mp_token", "")
-
     def is_configured(self) -> bool:
-        return bool(self.host and (self.static_token or (self.username and self.password)))
+        return bool(self.host and self.username and self.password)
 
     # ---------------- 鉴权 ----------------
     def _login(self) -> str:
         if not self.host:
             raise MoviePilotError("未配置 MoviePilot 地址")
         if not (self.username and self.password):
-            raise MoviePilotError("未配置 MoviePilot 用户名/密码")
+            raise MoviePilotError(
+                "未配置 MoviePilot 用户名/密码。注意：MP 的静态 API_TOKEN "
+                "不能用于订阅下发接口，必须使用账号密码登录"
+            )
         try:
             resp = self.session.post(
                 f"{self.host}/api/v1/login/access-token",
@@ -84,15 +87,14 @@ class MoviePilotClient:
 
         token = payload.get("access_token")
         if not token:
-            raise MoviePilotError(f"MoviePilot 登录失败：{payload.get('detail') or payload}")
+            detail = payload.get("detail") or payload.get("message") or payload
+            raise MoviePilotError(f"MoviePilot 登录失败：{detail}")
         with self._lock:
             self._token = token
             self._token_at = time.time()
         return token
 
     def _token_value(self, force: bool = False) -> str:
-        if self.static_token:
-            return self.static_token
         with self._lock:
             fresh = (time.time() - self._token_at) < self.TOKEN_TTL
             if not force and self._token and fresh:
@@ -104,27 +106,48 @@ class MoviePilotClient:
                  form: Optional[dict] = None) -> Any:
         if not self.host:
             raise MoviePilotError("未配置 MoviePilot 地址")
-        headers = {"Authorization": f"Bearer {self._token_value()}"}
-        url = f"{self.host}{path}"
-        try:
-            resp = self.session.request(method, url, headers=headers, params=params,
-                                        json=json_body, data=form, timeout=25)
-        except requests.exceptions.RequestException as e:
-            raise MoviePilotError(f"MoviePilot 请求失败：{e}")
+        if not (self.username and self.password):
+            raise MoviePilotError(
+                "未配置 MoviePilot 用户名/密码，无法鉴权。"
+                "静态 API_TOKEN 仅支持部分查询接口，订阅下发必须账号密码登录"
+            )
 
-        if resp.status_code == 401 and not self.static_token:
-            # token 过期，强制重登一次
-            headers = {"Authorization": f"Bearer {self._token_value(force=True)}"}
+        url = f"{self.host}{path}"
+        force = False
+        last_detail = ""
+        # 401 时强制重登重试一次；仍失败则把 MP 的 detail 原样带出，便于定位
+        for attempt in range(2):
+            headers = {"Authorization": f"Bearer {self._token_value(force=force)}"}
             try:
                 resp = self.session.request(method, url, headers=headers, params=params,
                                             json=json_body, data=form, timeout=25)
             except requests.exceptions.RequestException as e:
                 raise MoviePilotError(f"MoviePilot 请求失败：{e}")
 
+            if resp.status_code == 401 and attempt == 0:
+                force = True
+                try:
+                    last_detail = str(resp.json().get("detail") or "")
+                except Exception:  # noqa: BLE001
+                    last_detail = resp.text[:120]
+                continue
+
+            if resp.status_code >= 400:
+                detail = ""
+                try:
+                    body = resp.json()
+                    detail = str(body.get("detail") or body.get("message") or body)[:200]
+                except Exception:  # noqa: BLE001
+                    detail = resp.text[:120]
+                raise MoviePilotError(
+                    f"MoviePilot 返回 HTTP {resp.status_code}：{detail or '无详情'}"
+                )
+            break
+
         try:
             return resp.json()
         except ValueError:
-            raise MoviePilotError(f"MoviePilot 响应不是合法 JSON（HTTP {resp.status_code}）")
+            raise MoviePilotError("MoviePilot 响应不是合法 JSON")
 
     # ---------------- 业务 ----------------
     @staticmethod
@@ -221,12 +244,20 @@ class MoviePilotClient:
 
     def test_connection(self) -> Tuple[bool, str]:
         if not self.is_configured():
-            return False, "未配置 MoviePilot 地址或账号"
+            if not self.host:
+                return False, "未配置 MoviePilot 地址"
+            return False, (
+                "未配置 MoviePilot 用户名/密码。"
+                "注意：静态 API_TOKEN 无法用于订阅下发接口，必须使用账号密码"
+            )
         try:
             subs = self.list_subscribes()
             return True, f"连接成功，当前订阅 {len(subs)} 条"
         except MoviePilotError as e:
-            return False, str(e)
+            msg = str(e)
+            if "token" in msg.lower():
+                msg += " —— 请确认账号密码正确（静态 API_TOKEN 不能用于此接口）"
+            return False, msg
         except Exception as e:  # noqa: BLE001
             return False, f"未知异常：{e}"
 

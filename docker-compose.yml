@@ -36,8 +36,7 @@ services:
       - MP_HOST=http://127.0.0.1:3000
       - MP_USERNAME=
       - MP_PASSWORD=
-      # 或用静态 API_TOKEN（与账号密码二选一）
-      - MP_TOKEN=
+      # 注意：MP 的静态 API_TOKEN 无法调用订阅下发接口，必须账号密码
       # ---- 可选：HTTP API 引擎签名材料，需自行从飞牛 Web 端获取 ----
       # 签名密钥已内置；仅飞牛升级导致 code=5000 时才需覆盖 FN_API_KEY / FN_API_SECRET
       - FN_API_KEY=

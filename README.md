@@ -287,8 +287,7 @@ MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已�
 | `request_enabled` / `request_passcode` | 求片通道开关 / 提交口令 |
 | `search_source` | 求片选片搜索源：douban（默认）/ tmdb |
 | `mp_host` | MoviePilot 地址，如 `http://127.0.0.1:3000` |
-| `mp_username` / `mp_password` | MP 账号（OAuth2 表单登录换 access_token） |
-| `mp_token` | 静态 API_TOKEN 备选，与账号密码二选一 |
+| `mp_username` / `mp_password` | MP 账号（OAuth2 表单登录换 access_token）。必须账号密码 —— MP 静态 API_TOKEN 非 JWT，无法调用订阅下发接口 |
 
 ---
 
