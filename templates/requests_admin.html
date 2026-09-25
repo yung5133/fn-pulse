@@ -74,6 +74,19 @@
         </div>
     </div>
 </div>
+
+<!-- MoviePilot 候选选择弹窗：同名条目不止一个时由管理员挑选 -->
+<div id="pick_modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
+     align-items:center;justify-content:center;z-index:60">
+    <div class="card" style="width:520px;max-width:calc(100vw - 32px)">
+        <h2 class="card-title" id="pick_title">选择 MoviePilot 条目</h2>
+        <p class="faint" style="margin:4px 0 12px;font-size:12.5px" id="pick_msg"></p>
+        <div id="pick_list" style="max-height:320px;overflow-y:auto"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px">
+            <button onclick="closePick()">取消</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -163,6 +176,11 @@ async function load() {
                 <td><span class="badge ${x.status_badge}">${x.status_text}</span></td>
                 <td class="row-actions">
                     <button class="btn-sm" onclick='openModal(${JSON.stringify(x)})'>处理</button>
+                    ${x.mp_subscribe_id
+                        ? `<span class="badge badge-ok" title="已下发 MP 订阅 #${x.mp_subscribe_id}">MP✓</span>`
+                        : (x.status === 0 || x.status === 3)
+                            ? `<button class="btn-sm" onclick='dispatch(${JSON.stringify(x)})'>下发MP</button>`
+                            : ''}
                 </td>
             </tr>`).join('');
     } catch (e) {
@@ -188,6 +206,69 @@ document.getElementById('btn_check').onclick = async () => {
     }
 };
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+/* ---- 下发 MoviePilot ---- */
+let pickCtx = null;
+const pickModal = document.getElementById('pick_modal');
+
+function closePick() { pickModal.style.display = 'none'; }
+
+async function dispatch(x, override) {
+    const body = {
+        media_type: x.media_type,
+        external_source: (override ? override.external_source : x.external_source) || '',
+        external_id: override ? override.external_id : x.external_id,
+        title: x.title,
+        year: x.year || '',
+        season: x.season || 0,
+        poster_url: x.poster_url || '',
+        overview: x.overview || ''
+    };
+    try {
+        const r = await api(`/api/requests/${x.id}/dispatch`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const d = r.data;
+        if (d.needs_choice) {
+            pickCtx = x;
+            document.getElementById('pick_title').textContent = '选择：' + x.title;
+            document.getElementById('pick_msg').textContent = d.message || '';
+            document.getElementById('pick_list').innerHTML = d.candidates.map((m, i) => `
+                <div class="tmdb-row" data-i="${i}"
+                     style="display:flex;gap:10px;padding:7px;border:1px solid #e3e8ef;
+                            border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center">
+                    ${m.poster_url
+                        ? `<img src="${m.poster_url}" style="width:34px;height:50px;object-fit:cover;border-radius:5px">`
+                        : `<div style="width:34px;height:50px;background:#eef1f5;border-radius:5px"></div>`}
+                    <div style="min-width:0;flex:1">
+                        <div style="font-weight:550">${m.title}
+                            <span class="faint" style="font-weight:400">${m.year || ''}</span>
+                            <span class="badge" style="margin-left:4px">${m.media_type}</span>
+                        </div>
+                        <div class="faint" style="font-size:11.5px">${m.overview || ''}</div>
+                    </div>
+                </div>`).join('');
+            pickModal.style.display = 'flex';
+            pickModal.querySelectorAll('.tmdb-row').forEach(el => {
+                el.onclick = () => {
+                    closePick();
+                    dispatch(pickCtx, d.candidates[parseInt(el.dataset.i, 10)]);
+                };
+            });
+            return;
+        }
+        document.getElementById('alert').className = 'alert alert-ok';
+        document.getElementById('alert').textContent = d.message || '已下发 MoviePilot';
+        load();
+    } catch (e) {
+        document.getElementById('alert').className = 'alert alert-err';
+        document.getElementById('alert').textContent = e.message;
+    }
+}
+
+pickModal.addEventListener('click', e => { if (e.target === pickModal) closePick(); });
 window.addEventListener('load', load);
 </script>
 {% endblock %}

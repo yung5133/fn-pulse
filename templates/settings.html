@@ -114,6 +114,35 @@
 </div>
 
 <div class="card" style="margin-top:16px">
+    <div class="card-head"><h2 class="card-title">MoviePilot 对接</h2></div>
+    <p class="faint" style="margin:0 0 12px;font-size:12.5px">
+        求片可一键下发为 MoviePilot 订阅，由 MP 负责搜索下载整理；
+        之后用求片管理页的「检测入库闭环」把状态推进到已入库。
+        地址形如 <span class="mono">http://127.0.0.1:3000</span>。
+        账号密码与静态 API_TOKEN 二选一即可。
+    </p>
+    <div class="grid grid-2">
+        <label class="field">
+            <span>MoviePilot 地址</span>
+            <input type="text" id="mp_host" placeholder="http://127.0.0.1:3000">
+        </label>
+        <label class="field">
+            <span>用户名</span>
+            <input type="text" id="mp_username" autocomplete="off">
+        </label>
+        <label class="field">
+            <span>密码</span>
+            <input type="password" id="mp_password" autocomplete="new-password">
+        </label>
+        <label class="field">
+            <span>静态 API_TOKEN（备选，留空则用账号密码）</span>
+            <input type="text" id="mp_token" autocomplete="off">
+        </label>
+    </div>
+    <button id="btn_mp_test" class="btn-sm">测试 MoviePilot 连接</button>
+</div>
+
+<div class="card" style="margin-top:16px">
     <div class="card-head"><h2 class="card-title">管理员凭证</h2></div>
     <div class="grid grid-2">
         <label class="field">
@@ -137,7 +166,8 @@
 <script>
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
-              'fn_secret_string', 'fn_api_key', 'search_source'];
+              'fn_secret_string', 'fn_api_key', 'search_source',
+              'mp_host', 'mp_username', 'mp_password', 'mp_token'];
 // 复选框单独处理（不是文本框）
 const BOOL_KEYS = ['request_enabled'];
 // 求片口令：留空表示不要求口令
@@ -240,6 +270,15 @@ async function save() {
 }
 
 document.getElementById('btn_save').onclick = save;
+document.getElementById('btn_mp_test').onclick = async () => {
+    // 先保存再测试，否则测的还是旧配置
+    await save();
+    try {
+        const r = await api('/api/moviepilot/test', {method: 'POST'});
+        const d = r.data;
+        msg(d.ok ? 'alert-ok' : 'alert-err', `MoviePilot：${d.message}`);
+    } catch (e) { msg('alert-err', e.message); }
+};
 document.getElementById('btn_test').onclick = async () => {
     try {
         const r = await api('/api/system/test/connection', { method: 'POST' });

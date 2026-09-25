@@ -27,6 +27,7 @@ WRITABLE_KEYS = {
     "hidden_users", "timezone_offset_hours",
     "tmdb_api_key", "proxy_url", "webhook_token",
     "request_enabled", "request_passcode", "search_source",
+    "mp_host", "mp_username", "mp_password", "mp_token",
 }
 
 

@@ -31,6 +31,7 @@ from app.routers import (  # noqa: F401
     history,
     insight,
     library,
+    moviepilot,
     requests as requests_router,
     stats,
     system,
@@ -163,4 +164,5 @@ app.include_router(users.router)
 app.include_router(insight.router)
 app.include_router(library.router)
 app.include_router(requests_router.router)
+app.include_router(moviepilot.router)
 app.include_router(system.router)

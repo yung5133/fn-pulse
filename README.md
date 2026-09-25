@@ -204,6 +204,7 @@ environment:
 | 数据洞察 | `/insight` | 作息分布、画质结构、用户画像与勋章 |
 | 媒体库 | `/library` | 列表与扫描下发（需 REST 签名素材） |
 | **求片系统** | `/requests_admin`（后台）· `/request`（门户 `10208`） | 见下节 |
+| **MoviePilot 对接** | 求片管理页内一键下发 | MP `/api/v1/subscribe` |
 | 系统设置 | `/settings` | 双擎诊断、一键测试、快照重建 |
 
 ### 求片系统
@@ -231,13 +232,21 @@ emby-pulse 依赖 Emby 的 webhook 通知来闭环；飞牛影视没有 webhook�
 状态链路（待处理 → 已下载 → 已入库 / 已拒绝）、管理员备注回传给提交人、
 提交人可按用户名查询自己的历史。
 
+**对接 MoviePilot**：求片可直接「下发 MP」，转为 MoviePilot 的订阅——
+之后搜索、下载、整理全部交给 MP，本项目的「检测入库闭环」再把状态推进到已入库，
+形成 `求片 → MP 订阅 → 自动下载 → 入库闭环` 的完整链路。
+
+若求片来源是豆瓣（非 TMDB id），下发时会先在 MP 里按标题搜索：
+命中唯一则直接订阅；命中多条弹出候选列表由管理员挑选；一个都没有则明确报错。
+MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已做映射。
+
 **选片搜索源**：默认走豆瓣（`movie.douban.com/j/subject_suggest`，免 Key、国内无墙）。
 豆瓣联想接口不给剧情简介与评分，这是它的限制而非实现缺失；需要更全的元数据时
 可在后台把搜索源切到 TMDB（需 API Key，国内要代理）。豆瓣没有官方公开 API，
 用的是其 Web 端联想接口，豆瓣若调整该接口可能需要跟进。
 
-> 暂未对齐：Telegram 机器人协同、MoviePilot 一键下发。前者需要 webhook 才能推送
-> 播放/入库事件（飞牛无此能力），后者属于缺集管理的一环，见下文「与原版的能力差异」。
+> 暂未对齐：Telegram 机器人协同。它需要 webhook 才能推送播放/入库事件，而飞牛影视
+> 不提供事件流 —— 这部分与实时会话监控一样，属于依赖 Emby 服务器能力的范畴。
 
 ### 关于用户管理的边界
 
@@ -255,6 +264,7 @@ emby-pulse 依赖 Emby 的 webhook 通知来闭环；飞牛影视没有 webhook�
 | 全景仪表盘 / 播放历史 / 风云榜 / 洞察 | ✅ 已实现 | `trimmedia.db` 原生自带流水 |
 | 用户中心 | ✅ 已实现（账号只读） | 飞牛无安全的账号写接口，详见上节 |
 | 求片系统 | ✅ 已实现 | 见上节，鉴权方式与闭环机制有差异 |
+| MoviePilot 对接 | ✅ 已实现 | 一键下发为 MP 订阅，搜索收敛逻辑见上节 |
 | 媒体库扫描下发 | ✅ 已实现 | 飞牛 REST `/v/api/v1/mdb/scan/{guid}` |
 | 追剧日历 / 缺集管理 / 映迹工坊 / Telegram | ⏳ 待移植 | 数据可得，纯工程量问题 |
 | 实时会话监控（并发人数/IP/转码负荷） | ❌ 不可移植 | 依赖 Emby `/Sessions` 实时接口，飞牛无等价物 |
@@ -278,6 +288,11 @@ emby-pulse 依赖 Emby 的 webhook 通知来闭环；飞牛影视没有 webhook�
 | `db_copy_ttl` | 快照有效期（秒），默认 60 |
 | `timezone_offset_hours` | 时区偏移，默认 8 |
 | `hidden_users` | 不参与统计的用户 guid 列表 |
+| `request_enabled` / `request_passcode` | 求片通道开关 / 提交口令 |
+| `search_source` | 求片选片搜索源：douban（默认）/ tmdb |
+| `mp_host` | MoviePilot 地址，如 `http://127.0.0.1:3000` |
+| `mp_username` / `mp_password` | MP 账号（OAuth2 表单登录换 access_token） |
+| `mp_token` | 静态 API_TOKEN 备选，与账号密码二选一 |
 
 ---
 
@@ -308,11 +323,12 @@ fastapi 0.141.1 / starlette 1.7.0 / uvicorn 0.53.0 / jinja2 3.1.6
 
 ## 验证状态
 
-`tests/smoke.py` 覆盖 63 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
+`tests/smoke.py` 覆盖 73 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
 求片全链路（提交 / 校验 / 状态流转 / **入库闭环** / 豆瓣解析器 / 优雅降级）、
+**MoviePilot 对接**（未配置提示 / 载荷构造的中文枚举映射 / 配置回填）、
 门户物理隔离断言、写操作与非法参数过滤。
 测试使用合成的 `trimmedia.db`（5 个媒体条目 / 82 条流水），不涉及任何真实用户数据，
-且 CI **不依赖豆瓣或 TMDB 可用性**（网络路径只做离线解析器验证）。
+且 CI **不依赖豆瓣、TMDB 或 MoviePilot 可用性**（网络路径只做离线解析与载荷验证）。
 
 CI 在每次 push / PR 时于 Python 3.12 与 3.13 上各跑一遍；
 `docker-publish.yml` 则会构建 `amd64` / `arm64` 双架构镜像并推送到 GHCR。

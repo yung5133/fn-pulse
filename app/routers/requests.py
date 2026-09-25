@@ -51,6 +51,8 @@ def _row(r) -> dict:
         "tmdb_id": d.get("tmdb_id"),
         "poster_url": d.get("poster_path") or "",   # 列名沿用 poster_path，存的是完整 URL
         "overview": d.get("overview") or "",
+        "mp_subscribe_id": d.get("mp_subscribe_id"),
+        "mp_sent_at": d.get("mp_sent_at") or "",
         "created_at": d["created_at"],
         "updated_at": d["updated_at"],
     }
@@ -290,6 +292,101 @@ def set_status(request_id: int, data: StatusModel, _=Depends(require_login)):
 def delete_request(request_id: int, _=Depends(require_login)):
     db.execute("DELETE FROM media_requests WHERE id = ?", (request_id,))
     return ok({"id": request_id})
+
+
+# ================= MoviePilot 下发 =================
+class DispatchModel(BaseModel):
+    """下发到 MoviePilot 的参数。media 外部信息由前端选中后回传，避免二次搜索。"""
+    media_type: str = "movie"
+    external_source: str = ""      # tmdb / douban / other
+    external_id: Optional[int] = None
+    title: str = ""
+    year: str = ""
+    season: int = 0
+    poster_url: str = ""
+    overview: str = ""
+
+
+@router.post("/{request_id}/dispatch")
+def dispatch(request_id: int, data: DispatchModel, _=Depends(require_login)):
+    """
+    把求片下发为 MoviePilot 订阅。之后 MP 负责搜索下载整理，
+    FnPulse 的「检测入库闭环」负责把状态推进到已入库。
+
+    搜索策略：
+        * external_source == tmdb 且带 external_id -> 直接用，不搜索
+        * 否则按标题在 MP 里搜，用类型 + 年份收敛；
+          命中多条时返回 needs_choice 交由前端让管理员挑选
+    """
+    from app.core.moviepilot_client import MoviePilotError, moviepilot_client
+
+    rows = db.query("SELECT * FROM media_requests WHERE id = ?", (request_id,))
+    if not rows:
+        return {"status": "error", "message": f"求片 #{request_id} 不存在"}
+    req = dict(rows[0])
+
+    if not moviepilot_client.is_configured():
+        return {"status": "error",
+                "message": "未配置 MoviePilot。请在系统设置里填写地址与账号。"}
+
+    title = (data.title or req.get("title") or "").strip()
+    year = (data.year or req.get("year") or "").strip()
+    media_type = data.media_type or "movie"
+    season = max(0, int(data.season or req.get("season") or 0))
+
+    chosen = None
+    if data.external_source == "tmdb" and data.external_id:
+        chosen = {
+            "media_type": media_type, "title": title, "year": year,
+            "external_source": "tmdb", "external_id": data.external_id,
+            "poster_url": data.poster_url, "overview": data.overview,
+        }
+    else:
+        try:
+            candidates = moviepilot_client.search_media(title)
+        except MoviePilotError as e:
+            return {"status": "error", "message": str(e)}
+
+        want_type = "movie" if media_type == "movie" else "series"
+        filtered = [x for x in candidates if x.get("media_type") == want_type]
+        if year:
+            strict = [x for x in filtered if str(x.get("year") or "") == year]
+            filtered = strict or filtered
+        if len(filtered) == 1:
+            chosen = filtered[0]
+        elif len(filtered) > 1:
+            return ok({
+                "needs_choice": True,
+                "candidates": filtered[:8],
+                "message": f"在 MoviePilot 中找到 {len(filtered)} 个同名条目，请选择",
+            })
+        else:
+            return {"status": "error",
+                    "message": f"MoviePilot 中没有搜到「{title}」，请手动在 MP 里处理"}
+
+    payload = moviepilot_client.build_subscribe_payload(chosen, season=season)
+    try:
+        ok_flag, msg, sub_id = moviepilot_client.add_subscribe(payload)
+    except MoviePilotError as e:
+        return {"status": "error", "message": str(e)}
+
+    if not ok_flag:
+        return {"status": "error", "message": f"MoviePilot 拒绝订阅：{msg}"}
+
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    note = f"已下发 MoviePilot 订阅{f' #{sub_id}' if sub_id else ''} · {now}"
+    db.execute(
+        """UPDATE media_requests
+           SET status = 1, admin_note = ?, mp_subscribe_id = ?, mp_sent_at = ?, updated_at = ?
+           WHERE id = ?""",
+        (note, sub_id, now, now, request_id),
+    )
+    return ok({
+        "id": request_id,
+        "mp_subscribe_id": sub_id,
+        "chosen": chosen,
+        "message": note,
+    })
 
 
 # ================= 入库闭环 =================

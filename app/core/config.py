@@ -61,6 +61,14 @@ DEFAULT_CONFIG = {
     "request_passcode": "",
     # 选片搜索源：douban（默认，无需任何 Key）/ tmdb（需 tmdb_api_key，国内要代理）
     "search_source": "douban",
+
+    # ---- MoviePilot 对接（求片一键下发为 MP 订阅）----
+    # 地址如 http://127.0.0.1:3000；账号密码走 OAuth2 表单登录拿 access_token。
+    # mp_token 是静态 API_TOKEN 备选（Bearer 方式），两者配一个即可。
+    "mp_host": os.getenv("MP_HOST", "").strip().rstrip("/"),
+    "mp_username": os.getenv("MP_USERNAME", "").strip(),
+    "mp_password": os.getenv("MP_PASSWORD", "").strip(),
+    "mp_token": os.getenv("MP_TOKEN", "").strip(),
 }
 
 _LOCK = threading.RLock()

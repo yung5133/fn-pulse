@@ -256,6 +256,45 @@ def main() -> int:
     closed = [x for x in mine if x["title"] == "沙丘" and x["status"] == 2]
     results.append(("闭环 同名求片被自动置为已入库",
                     bool(closed) and "媒体库" in (closed[0].get("admin_note") or ""), ""))
+
+    # ---- MoviePilot 对接：默认未配置，必须给出明确提示而不是 500 ----
+    check("GET", "/api/moviepilot/config", 200)
+    r = c.get("/api/moviepilot/config").json()["data"]
+    results.append(("MP 默认未配置", r.get("configured") is False, str(r)))
+    rr = c.get("/api/moviepilot/search?query=Dune").json()
+    results.append(("MP 未配置时搜索给出提示",
+                    rr.get("configured") is False and bool(rr.get("message")), str(rr)[:120]))
+    check("POST", "/api/requests/submit", 200,
+          json={"title": "银翼杀手 2049", "requester": "bob", "media_type": "movie"})
+    r = c.post("/api/requests/2/dispatch", json={"media_type": "movie"}).json()
+    results.append(("MP 未配置时下发给出明确错误",
+                    r.get("status") == "error" and "未配置" in str(r.get("message")), str(r)[:140]))
+
+    # MP 载荷构造：type 必须是中文枚举，剧集必须有 season
+    from app.core.moviepilot_client import moviepilot_client as _mp
+    movie_payload = _mp.build_subscribe_payload(
+        {"media_type": "movie", "title": "沙丘", "year": "2021",
+         "external_id": 438148, "poster_url": "u", "overview": "o"})
+    tv_payload = _mp.build_subscribe_payload(
+        {"media_type": "series", "title": "怪奇物语", "year": "2016",
+         "external_id": 66732}, season=2)
+    results.append(("MP 载荷 电影 -> 电影", movie_payload.get("type") == "电影"
+                    and movie_payload.get("tmdbid") == 438148
+                    and "season" not in movie_payload, str(movie_payload)[:140]))
+    results.append(("MP 载荷 series -> 电视剧 且带 season",
+                    tv_payload.get("type") == "电视剧" and tv_payload.get("season") == 2,
+                    str(tv_payload)[:140]))
+    results.append(("MP 载荷 无 tmdbid 时剔除该键",
+                    "tmdbid" not in _mp.build_subscribe_payload(
+                        {"media_type": "movie", "title": "x", "year": ""}),
+                    ""))
+
+    # 配置回填后 is_configured 应为 True（不发起真实连接）
+    c.post("/api/system/settings", json={"data": {
+        "mp_host": "http://127.0.0.1:3000", "mp_username": "admin", "mp_password": "pass123"}})
+    r = c.get("/api/moviepilot/config").json()["data"]
+    results.append(("MP 配置回填后 configured=True", r.get("configured") is True, str(r)))
+
     # 清理，避免影响后续隔离断言的计数
     for x in c.get("/api/requests").json()["data"]:
         c.delete(f"/api/requests/{x['id']}")
