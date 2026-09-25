@@ -195,20 +195,34 @@ def main() -> int:
     )
     results.append(("豆瓣解析器（类型映射/海报放大/脏数据过滤）", ok_parse, str(parsed)[:160]))
 
-    # ---- authx 验证工具与客户端签名算法必须一致（防止两处实现漂移） ----
+    # ---- authx 签名：与 MoviePilot 公开算法做金标比对，防止顺序/分段漂移 ----
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
     import verify_authx  # noqa: E402
 
     from app.core.config import cfg as _cfg
-    from app.core.fn_client import fn_client as _fc
+    from app.core.fn_client import (
+        DEFAULT_API_KEY, DEFAULT_API_SECRET, fn_client as _fc,
+    )
 
-    _cfg.set("fn_secret_string", "test-secret")
-    _cfg.set("fn_api_key", "test-key")
+    results.append(("authx 内置密钥与 MoviePilot 逆向值一致",
+                    DEFAULT_API_KEY == "NDzZTVxnRKP8Z0jXg1VAMonaG8akvh"
+                    and DEFAULT_API_SECRET == "16CCEB3D-AB42-077D-36A1-F355324E4237",
+                    f"{DEFAULT_API_KEY[:8]}… / {DEFAULT_API_SECRET[:8]}…"))
+
+    # 金标：按 MoviePilot __get_authx 的拼接顺序独立重算，与 fn_client 输出比对
     _method, _path, _body = "POST", "/v/api/v1/task/stop", {"guid": "g1", "type": "TaskItemScrap"}
-    authx = _fc._cse_sign(_method, _path, None, _body)
-    nonce, ts, sign = verify_authx.parse_authx(authx)
-    v = verify_authx.verify(_cfg.get("fn_secret_string"), _cfg.get("fn_api_key"),
-                            _method, _path, None, _body, nonce, ts, sign)
+    _nonce, _ts = "123456", "1700000000000"
+    authx = _fc._cse_sign(_method, _path, None, _body, nonce=_nonce, timestamp=_ts)
+    sign = verify_authx.parse_authx(authx)[2]
+    bh = verify_authx.body_hash_for(_method, None, _body)
+    golden = verify_authx.md5("_".join([
+        DEFAULT_API_KEY, _path, _nonce, _ts, bh, DEFAULT_API_SECRET]))
+    results.append(("authx 金标比对（MoviePilot 顺序）", sign == golden,
+                    f"sign={sign[:12]}… golden={golden[:12]}…"))
+
+    # 工具与客户端自洽（防止两处实现漂移）
+    v = verify_authx.verify(DEFAULT_API_KEY, DEFAULT_API_SECRET,
+                            _method, _path, None, _body, _nonce, _ts, sign)
     results.append(("authx 工具与客户端算法一致", bool(v["match"]), str(v)[:140]))
 
     check("GET", "/logout", 302)

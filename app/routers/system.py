@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 # 允许通过接口修改的配置键（白名单，避免任意写盘）
 WRITABLE_KEYS = {
     "fn_host", "fn_username", "fn_password", "fn_app_name",
-    "fn_secret_string", "fn_api_key", "fn_public_url",
+    "fn_api_key", "fn_api_secret", "fn_public_url",
     "playback_data_mode", "fn_db_path", "db_copy_ttl",
     "hidden_users", "timezone_offset_hours",
     "tmdb_api_key", "proxy_url", "webhook_token",

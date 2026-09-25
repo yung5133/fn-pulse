@@ -1,7 +1,7 @@
 """
 登录鉴权。
 
-提供两条登录通道，因为飞牛影视的账号校验依赖未公开的 authx 签名素材：
+提供两条登录通道：
 
     1. 本地管理员（默认，永远可用）
        凭证存放于业务库配置，PBKDF2-SHA256 加盐存储。首次启动若未设置，
@@ -9,8 +9,8 @@
        admin / fnpulse 并在启动日志中强提示修改。
 
     2. 飞牛账号透传（可选）
-       走 /v/api/v1/login，仅在已配置 fn_secret_string / fn_api_key 时可用，
-       且仅允许管理员登录。
+       走飞牛影视的 REST 登录（v2 SHA256 优先，v1 兜底），
+       需要在系统设置里填好 fn_host 与飞牛账号。
 
 会话使用星形 SessionMiddleware 签名的 Cookie，有效期 7 天。
 """
@@ -144,10 +144,10 @@ async def api_login(data: LoginModel, request: Request):
     if data.via_fn:
         from app.core.fn_client import FnApiError, fn_client
 
-        if not fn_client.has_signature_material:
+        if not (fn_client.host and fn_client.username and fn_client.password):
             return JSONResponse({
                 "status": "error",
-                "message": "未配置 authx 签名素材，飞牛账号登录不可用。请使用本地管理员账号登录。",
+                "message": "未配置飞牛影视地址或账号。请在系统设置里填写。",
             }, status_code=400)
         try:
             # 借用登录流程做一次真实凭证校验（拿到 token 即代表账号密码正确）

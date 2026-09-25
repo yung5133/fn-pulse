@@ -1,23 +1,20 @@
 """
 飞牛影视 HTTP 管理接口客户端（/v/api/v1/*）。
 
-协议要点（逆向自社区实现，非官方公开文档）：
+协议要点（与 MoviePilot 的 trimemedia 模块、bili-plan 的 fnos.rs 交叉验证一致）：
     * 统一前缀      /v/api/v1
-    * 登录          POST /v/api/v1/login  {"username","password","app_name"} -> data.token
-    * 会话鉴权      Header  Authorization: <token>
+    * 登录          v2: POST /v/api/v2/user/loginByPassword（密码为 SHA256 小写 hex）
+                   v1: POST /v/api/v1/login（明文，旧版服务端回退用）
+                   新版服务端已废弃 v1，故 v2 优先、v1 兜底
+    * 会话鉴权      Header  Authorization: <token>   （不带 Bearer 前缀）
     * 请求签名      Header  authx: nonce=<6位数字>&timestamp=<毫秒>&sign=<md5>
-                   sign = md5(secret + "_" + path + "_" + nonce + "_" + timestamp
-                              + "_" + body_hash + "_" + api_key)
-                   body_hash(GET)  = md5(urlencode(sorted(params.items())))
-                   body_hash(其他) = md5(json.dumps(body, sort_keys=True,
-                                                    separators=(",", ":"),
-                                                    ensure_ascii=False))
-    * 业务码        code == 0 成功；code == -2 需要重新登录
+                   sign = md5( API_KEY _ path _ nonce _ timestamp _ body_hash _ API_SECRET )
+                   body_hash(GET)  = md5("k=v&k2=v2")  —— 未 urlencode 的原文
+                   body_hash(其他) = md5(请求体 JSON 原文)
+    * 业务码        code == 0 成功；code == -2 需要重新登录；5000 签名无效
 
-关于 secret / api_key：
-    这两个值是飞牛影视 Web 端内置常量，官方未公开，本项目无法内置。
-    未配置时本客户端会直接返回明确错误；SQLite 引擎不依赖它们，
-    因此播放统计等全部核心功能仍可正常使用。
+签名用的两段密钥内嵌于官方 Web 客户端（逆向所得），已作为默认值内置，
+无需用户配置；飞牛升级前端导致 `code=5000 invalid sign` 时才需要覆盖。
 """
 
 import hashlib
@@ -34,6 +31,14 @@ from urllib3.util.retry import Retry
 
 from app.core.config import cfg
 
+# 签名密钥两段，内嵌于官方 trimemedia-web 前端。
+# 命名与 MoviePilot / bili-plan 的逆向结果保持一致：
+#   API_KEY   是拼接串的第一段，API_SECRET 是最后一段。
+# 若飞牛升级后出现 code=5000 invalid sign，优先怀疑这两个值变了。
+DEFAULT_API_KEY = "NDzZTVxnRKP8Z0jXg1VAMonaG8akvh"
+DEFAULT_API_SECRET = "16CCEB3D-AB42-077D-36A1-F355324E4237"
+DEFAULT_APP_NAME = "trimemedia-web"
+
 
 class FnApiError(Exception):
     """飞牛接口返回非 0 业务码。"""
@@ -49,6 +54,7 @@ class FnClient:
     """带自动登录、自动签名、自动重试的飞牛 REST 客户端。"""
 
     API_LOGIN = "/v/api/v1/login"
+    API_LOGIN_V2 = "/v/api/v2/user/loginByPassword"
     API_MDB_LIST = "/v/api/v1/mdb/list"
     API_MDB_SCAN = "/v/api/v1/mdb/scan/{guid}"
     API_TASK_STOP = "/v/api/v1/task/stop"
@@ -86,19 +92,22 @@ class FnClient:
 
     @property
     def app_name(self) -> str:
-        return cfg.get("fn_app_name", "trimemedia-web")
+        return cfg.get("fn_app_name", DEFAULT_APP_NAME)
 
     @property
-    def secret_string(self) -> str:
-        return cfg.get("fn_secret_string", "")
+    def api_key_first(self) -> str:
+        """签名串第一段。默认内置官方值，飞牛升级后可覆盖。"""
+        return str(cfg.get("fn_api_key") or DEFAULT_API_KEY)
 
     @property
-    def api_key(self) -> str:
-        return cfg.get("fn_api_key", "")
+    def api_secret_last(self) -> str:
+        """签名串最后一段。默认内置官方值，飞牛升级后可覆盖。"""
+        return str(cfg.get("fn_api_secret") or DEFAULT_API_SECRET)
 
     @property
     def has_signature_material(self) -> bool:
-        return bool(self.secret_string and self.api_key)
+        # 密钥已内置默认值，恒为可用；保留该属性以兼容既有调用方
+        return True
 
     # ---------------- 签名 ----------------
     @staticmethod
@@ -113,36 +122,64 @@ class FnClient:
             return data
         return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
+    @staticmethod
+    def _raw_query(params: Optional[dict]) -> str:
+        """
+        GET 的 body_hash 原文：`k=v&k2=v2`，未 urlencode、按传入顺序。
+        与 MoviePilot 的 `queries_unquoted` 一致 —— 用 urlencode 会导致
+        中文/特殊字符场景验签失败。
+        """
+        if not params:
+            return ""
+        return "&".join(f"{k}={v}" for k, v in params.items())
+
     def _cse_sign(self, method: str, path: str,
-                  params: Optional[dict], data: Any) -> str:
-        nonce = str(random.randint(100000, 999999))
-        timestamp = str(int(time.time() * 1000))
+                  params: Optional[dict] = None, data: Any = None,
+                  nonce: Optional[str] = None, timestamp: Optional[str] = None) -> str:
+        nonce = nonce or str(random.randint(100000, 999999))
+        timestamp = timestamp or str(int(time.time() * 1000))
 
         if method.upper() == "GET":
-            serialized = urlencode(sorted(params.items())) if params else ""
+            serialized = self._raw_query(params)
         else:
             serialized = self._serialize_body(data)
 
         body_hash = self._md5(serialized)
-        raw = "_".join([self.secret_string, path, nonce, timestamp, body_hash, self.api_key])
+        raw = "_".join([self.api_key_first, path, nonce, timestamp, body_hash,
+                        self.api_secret_last])
         return f"nonce={nonce}&timestamp={timestamp}&sign={self._md5(raw)}"
 
     # ---------------- 登录 ----------------
     def _login(self) -> str:
         if not self.host:
             raise FnApiError(-1, "未配置飞牛影视地址 fn_host", self.API_LOGIN)
-        if not self.username or not self.password:
+        if not (self.username and self.password):
             raise FnApiError(-1, "未配置飞牛影视管理员账号/密码", self.API_LOGIN)
-        if not self.has_signature_material:
-            raise FnApiError(
-                -1,
-                "缺少 authx 签名素材（fn_secret_string / fn_api_key），HTTP 引擎不可用；"
-                "请从飞牛影视 Web 端获取，或改用 SQLite 数据源模式",
-                self.API_LOGIN,
-            )
 
-        payload = {"username": self.username, "password": self.password, "app_name": self.app_name}
-        resp = self._raw("POST", self.API_LOGIN, data=payload)
+        # v2 协议：密码传 SHA256 小写 hex。新版服务端已废弃 v1 明文登录。
+        sha256 = hashlib.sha256(self.password.encode("utf-8")).hexdigest()
+        try:
+            resp = self._raw("POST", self.API_LOGIN_V2,
+                             data={"username": self.username, "password": sha256,
+                                   "app_name": self.app_name})
+            token = (resp.get("data") or {}).get("token") if isinstance(resp, dict) else None
+            if token:
+                with self._lock:
+                    self._token = token
+                    self._token_at = time.time()
+                return token
+            raise FnApiError(-1, "v2 登录未返回 token", self.API_LOGIN_V2)
+        except FnApiError as e:
+            # v2 登录接口存在但账号密码错误 -> 不回退（回退也一样失败）
+            if e.code not in (0, -1):
+                raise
+            # 走到这里说明 v2 接口不可用（404/非 JSON 等），回退旧版 v1 明文登录
+        except requests.exceptions.RequestException:
+            pass  # 网络/HTTP 层失败，回退 v1 再试
+
+        resp = self._raw("POST", self.API_LOGIN,
+                         data={"username": self.username, "password": self.password,
+                               "app_name": self.app_name})
         token = (resp.get("data") or {}).get("token") if isinstance(resp, dict) else None
         if not token:
             raise FnApiError(-1, "登录未返回 token，请检查账号密码", self.API_LOGIN)
@@ -164,6 +201,7 @@ class FnClient:
         url = f"{self.host}{path}"
         headers = {
             "Content-Type": "application/json",
+            "Referer": f"{self.host}/",
             "authx": self._cse_sign(method, path, params, data),
         }
         # 登录接口本身没有 token，其余接口都带上
@@ -213,15 +251,14 @@ class FnClient:
         """返回 (是否可用, 说明)。用于设置页连通性测试。"""
         if not self.host:
             return False, "未配置飞牛影视地址"
-        if not self.has_signature_material:
-            return False, (
-                "未配置 authx 签名素材（fn_secret_string / fn_api_key）。"
-                "HTTP 引擎需要这两个值；当前请使用 SQLite 数据源模式。"
-            )
+        if not (self.username and self.password):
+            return False, "未配置飞牛影视账号，无法调用 REST 接口；播放统计不受影响"
         try:
             libs = self.library_list()
             return True, f"连接成功，共读取到 {len(libs)} 个媒体库"
         except FnApiError as e:
+            if e.code == 5000:
+                return False, "签名无效（code=5000）：飞牛升级后签名密钥可能已变更，需更新内置常量"
             return False, str(e)
         except Exception as e:  # noqa: BLE001
             return False, f"未知异常: {e}"

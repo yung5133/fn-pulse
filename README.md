@@ -112,84 +112,49 @@ item_user_play   item_guid, user_guid, visible, update_time(毫秒),
 
 ## REST 签名（authx）
 
-飞牛影视的 REST 接口要求带签名头，算法如下：
+飞牛影视的 REST 接口要求带签名头。签名密钥**已随本项目内置**（来自官方 Web 客户端，
+逆向自 MoviePilot 的 trimemedia 模块与 bili-plan 的 fnos.rs，两个独立实现交叉印证），
+开箱即用，无需任何配置。
 
 ```
 authx: nonce=<6位数字>&timestamp=<毫秒>&sign=<md5>
 
-sign       = md5(secret + "_" + path + "_" + nonce + "_" + timestamp
-                 + "_" + body_hash + "_" + api_key)
-body_hash(GET)  = md5(urlencode(sorted(params.items())))
-body_hash(其他) = md5(json.dumps(body, sort_keys=True,
-                                 separators=(",", ":"), ensure_ascii=False))
+sign       = md5( API_KEY _ path _ nonce _ timestamp _ body_hash _ API_SECRET )
+             API_KEY   = NDzZTVxnRKP8Z0jXg1VAMonaG8akvh      （第一段）
+             API_SECRET= 16CCEB3D-AB42-077D-36A1-F355324E4237 （末段）
+body_hash(GET)  = md5("k=v&k2=v2")     # 未 urlencode 的原文，按传入顺序
+body_hash(其他) = md5(请求体 JSON 原文)
 
-登录：POST /v/api/v1/login  {"username","password","app_name"} -> data.token
-会话：Header  Authorization: <token>
-业务码：code == 0 成功；code == -2 需重新登录；code == -14 重复任务
+登录：v2  POST /v/api/v2/user/loginByPassword   密码为 SHA256 小写 hex
+      v1  POST /v/api/v1/login                  明文（旧版服务端兜底）
+会话：Header  Authorization: <token>              （不带 Bearer 前缀）
+业务码：code == 0 成功；code == -2 需重新登录；code == -14 重复任务；5000 签名无效
 ```
 
-> ⚠️ `secret_string` 与 `api_key` 是飞牛影视 Web 端的内置常量，**官方从未公开**，
-> 本项目无法内置。未配置时媒体库列表与扫描功能不可用，界面会明确提示；
-> **播放统计不受任何影响**。
+两个易错点（本项目已处理，自己实现时务必注意）：
+* **GET 的 body_hash 不能 urlencode** —— 官方客户端用的是原文拼接，urlencode 后验签失败
+* **签名用的 path 要带 `/v` 前缀** —— 与实际请求路径一致
 
-### 如何获取签名素材
+### 飞牛升级后签名失效怎么办
 
-这两个值写死在飞牛影视的 Web 前端 JS 里，**每个访问过 Web 端的浏览器都下载过它们**，
-所以不是什么机密，只是没人正式文档化。提取步骤：
-
-1. 浏览器打开 `http://<NAS的IP>:5666` 并登录飞牛影视
-2. 按 `F12` 打开开发者工具 → 切到 **Sources（源代码）** 面板
-3. 按 `Ctrl+Shift+F` 做**全局搜索**（跨所有已加载的 JS 文件）
-4. 依次试这些关键词，直到找到拼接逻辑：
-   * `authx`
-   * `secret`
-   * `api_key`
-   * `subject_suggest`（如果上面没中，说明代码被压缩改名了，就顺着 md5/签名函数找）
-5. 你要找的是形如这样的两行常量赋值（变量名可能不同，值是重点）：
-
-```js
-const SECRET = "xxxxxxxxxxxxxxxx";     // -> fn_secret_string
-const API_KEY = "yyyyyyyyyyyyyyyy";    // -> fn_api_key
-```
-
-6. 提取后**务必先用工具验证**，别急着填配置：
+表现是 REST 接口返回 `code=5000 invalid sign`。这说明飞牛改了前端密钥，
+用 `tools/verify_authx.py` 重新核对即可：
 
 ```bash
-# 抓一条真实请求（Network 面板里任选一条，复制它的 URL 和 authx 请求头）
+# 从浏览器 Network 面板任选一条请求，复制 URL 与 authx 请求头
 python tools/verify_authx.py \
-    --secret "xxxxxxxx" --api-key "yyyyyyyy" \
     --url "http://<NAS>:5666/v/api/v1/mdb/list" \
     --method GET \
     --authx "nonce=123456&timestamp=1735000000000&sign=abcd..."
 ```
 
-输出 `✅ 匹配` 说明素材正确；`❌ 不匹配` 通常是三个原因：
-* 路径不对 —— 必须是**相对路径**（不含主机名），且与抓包时完全一致
-* method 不对 —— GET 的 body_hash 来自排序后的查询串，POST 来自排序后的 JSON
-* 值本身提错了 —— 回到第 4 步，找的是**常量**而不是某次请求里的临时值
+该工具不联网，本地按同算法重算比对；省略 `--api-key/--secret` 时用内置值。
+若确认密钥已变，在后台「系统设置 → REST 签名密钥」覆盖，或用环境变量
+`FN_API_KEY` / `FN_API_SECRET`。算法实现与工具之间有一致性测试（金标比对）保证不漂移。
 
-7. 验证通过后，二选一写入配置：
-
-```yaml
-# docker-compose.yml
-environment:
-  - FN_SECRET_STRING=xxxxxxxx
-  - FN_API_KEY=yyyyyyyy
-```
-
-或登录后台 `http://<IP>:10207` → 系统设置 → 「REST 签名素材（可选）」两张输入框。
-
-### 配置之后能解锁什么
-
-| 能力 | 无素材 | 有素材 |
-| --- | --- | --- |
-| 播放统计 / 历史 / 风云榜 / 洞察 | ✅ 走 SQLite | ✅（不变） |
-| 媒体库列表 + 触发扫描 | ❌ | ✅ |
-| 登录页「使用飞牛影视账号校验」 | ❌ | ✅ |
-| 求片门户 | ✅（不依赖） | ✅（不依赖） |
-
-注意这两值是**版本相关**的：飞牛影视更新前端后可能变化，届时重新提取即可。
-本项目的算法实现与 `tools/verify_authx.py` 有一致性测试保证，不会各改各的。
+> 说明：这两个值不是安全意义上的机密——每个打开过飞牛 Web 端的浏览器都下载过它们。
+> 此前本 README 写过"官方未公开、无法内置"，经 MoviePilot / bili-plan 的公开实现
+> 交叉验证后已更正，此前的表述是错误的。
 
 ---
 
@@ -202,7 +167,7 @@ environment:
 | 内容风云榜 | `/content` | 播放次数与累计时长排行，按类型拆分 |
 | 用户中心 | `/users` | 账号只读 + 本地备注 / 到期日 / 统计开关 |
 | 数据洞察 | `/insight` | 作息分布、画质结构、用户画像与勋章 |
-| 媒体库 | `/library` | 列表与扫描下发（需 REST 签名素材） |
+| 媒体库 | `/library` | 列表与扫描下发（飞牛 REST，密钥已内置） |
 | **求片系统** | `/requests_admin`（后台）· `/request`（门户 `10208`） | 见下节 |
 | **MoviePilot 对接** | 求片管理页内一键下发 | MP `/api/v1/subscribe` |
 | 系统设置 | `/settings` | 双擎诊断、一键测试、快照重建 |
@@ -281,7 +246,7 @@ MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已�
 | --- | --- |
 | `fn_host` | 飞牛影视地址，如 `http://127.0.0.1:5666` |
 | `fn_username` / `fn_password` | 管理员账号（REST 登录用） |
-| `fn_secret_string` / `fn_api_key` | authx 签名素材，可选 |
+| `fn_api_key` / `fn_api_secret` | authx 签名密钥两段，已内置默认值，仅飞牛升级后需覆盖 |
 | `fn_public_url` | 对外访问地址，用于生成跳转 |
 | `playback_data_mode` | `sqlite`（默认）/ `api` |
 | `fn_db_path` | trimmedia.db 路径 |
@@ -303,7 +268,7 @@ MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已�
 1. **本地管理员**（默认，永远可用）—— PBKDF2-SHA256 加盐存储。
    首次启动由 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 播种，默认为 `admin / fnpulse`，
    启动日志会强提示修改。
-2. **飞牛账号透传**（可选）—— 需先配置 REST 签名素材。
+2. **飞牛账号透传**（可选）—— 在系统设置里填好飞牛地址与账号即可，校验走飞牛影视的 REST 登录（v2 SHA256 优先，v1 兜底）。
 
 ---
 

@@ -27,10 +27,10 @@ DEFAULT_CONFIG = {
     "fn_username": os.getenv("FN_USERNAME", "").strip(),
     "fn_password": os.getenv("FN_PASSWORD", "").strip(),
     "fn_app_name": os.getenv("FN_APP_NAME", "trimemedia-web").strip(),
-    # authx 签名素材：飞牛 Web 端内置常量，官方未公开。留空则 HTTP 引擎不可用，
-    # 但 SQLite 引擎不受任何影响 —— 本项目推荐直接使用 SQLite 引擎。
-    "fn_secret_string": os.getenv("FN_SECRET_STRING", "").strip(),
-    "fn_api_key": os.getenv("FN_API_KEY", "").strip(),
+    # authx 签名密钥两段（内嵌于官方 Web 客户端，已随项目内置，无需配置）。
+    # 若飞牛升级后出现 code=5000 invalid sign，才需要覆盖这两个值。
+    "fn_api_key": os.getenv("FN_API_KEY", "").strip(),      # 签名串第一段
+    "fn_api_secret": os.getenv("FN_API_SECRET", "").strip(),  # 签名串末段
     "fn_public_url": os.getenv("FN_PUBLIC_URL", "").strip().rstrip("/"),
 
     # ---- 数据源双擎 ----
@@ -54,9 +54,9 @@ DEFAULT_CONFIG = {
     "webhook_token": "fnpulse",
 
     # ---- 求片门户 ----
-    # 飞牛影视无法通过 API 校验用户密码（authx 签名素材未公开），因此求片门户
-    # 不要求用户登录，由用户自填飞牛用户名 + 片名。设置 request_passcode 后
-    # 提交需附加口令，避免对外开放时被滥用。
+    # 求片门户不要求用户登录（自报飞牛用户名 + 片名，零配置可用）。
+    # 飞牛 REST 登录可校验密码，后续可升级为飞牛账号登录。
+    # 设置 request_passcode 后提交需附加口令，避免对外开放时被滥用。
     "request_enabled": True,
     "request_passcode": "",
     # 选片搜索源：douban（默认，无需任何 Key）/ tmdb（需 tmdb_api_key，国内要代理）

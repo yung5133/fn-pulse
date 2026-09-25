@@ -1,4 +1,5 @@
-"""媒体库管理接口 —— 这一组依赖 HTTP 引擎（authx 签名素材）。
+"""
+媒体库管理接口 —— 依赖飞牛 REST 引擎（签名密钥已内置）。
 
 设计说明：库列表与扫描触发是 REST 能覆盖的部分；切勿由此推断
 "HTTP 引擎也能查播放统计"，它做不到。
@@ -27,9 +28,6 @@ def _unavailable(message: str):
 
 @router.get("/list")
 def library_list(_=Depends(require_login)):
-    if not fn_client.has_signature_material:
-        return ok([], available=False,
-                  message="未配置 authx 签名素材，无法调用飞牛 REST 接口")
     try:
         return ok(fn_client.library_list(), available=True)
     except FnApiError as e:
@@ -40,10 +38,6 @@ def library_list(_=Depends(require_login)):
 
 @router.post("/scan")
 def library_scan(data: ScanModel, _=Depends(require_login)):
-    if not fn_client.has_signature_material:
-        db.scan_task_add(data.guid, data.name, "error", "缺少 authx 签名素材")
-        return ok({"ok": False}, message="未配置 authx 签名素材，无法下发扫描指令")
-
     success, msg = fn_client.library_scan(data.guid, data.dir_list or None)
     db.scan_task_add(
         data.guid, data.name,
@@ -55,8 +49,6 @@ def library_scan(data: ScanModel, _=Depends(require_login)):
 
 @router.post("/scan/stop")
 def scan_stop(data: ScanModel, _=Depends(require_login)):
-    if not fn_client.has_signature_material:
-        return ok({"ok": False}, message="未配置 authx 签名素材")
     success, msg = fn_client.task_stop(data.guid)
     return ok({"ok": success}, message=msg)
 

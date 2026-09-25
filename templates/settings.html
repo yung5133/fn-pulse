@@ -70,21 +70,22 @@
 </div>
 
 <div class="card" style="margin-top:16px">
-    <div class="card-head"><h2 class="card-title">REST 签名素材（可选）</h2></div>
-    <div class="alert alert-warn">
-        飞牛影视的 REST 接口要求带 <span class="mono">authx</span> 签名，其两个常量内置于官方 Web 端、
-        <b>未被官方公开</b>，本项目无法内置。未配置时媒体库列表与扫描功能不可用，
-        但<b>播放统计不受任何影响</b>（走 SQLite 引擎）。若确实需要媒体库列表与扫描下发，
-        请自行从飞牛影视 Web 端获取后填入下面两个值。
+    <div class="card-head"><h2 class="card-title">REST 签名密钥</h2></div>
+    <div class="alert alert-info">
+        两段签名密钥已<b>随项目内置</b>（来自官方 Web 客户端，逆向自 MoviePilot / bili-plan），
+        通常<b>无需改动</b>。仅当飞牛影视升级后出现
+        <span class="mono">code=5000 invalid sign</span> 时才需要更新。
     </div>
     <div class="grid grid-2">
         <label class="field">
-            <span>secret_string</span>
-            <input type="text" id="fn_secret_string" autocomplete="off">
+            <span>API Key（签名串第一段，留空用内置值）</span>
+            <input type="text" id="fn_api_key" autocomplete="off"
+                   placeholder="NDzZTVxnRKP8Z0jXg1VAMonaG8akvh">
         </label>
         <label class="field">
-            <span>api_key</span>
-            <input type="text" id="fn_api_key" autocomplete="off">
+            <span>API Secret（签名串末段，留空用内置值）</span>
+            <input type="text" id="fn_api_secret" autocomplete="off"
+                   placeholder="16CCEB3D-AB42-077D-36A1-F355324E4237">
         </label>
     </div>
 </div>
@@ -166,7 +167,7 @@
 <script>
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
-              'fn_secret_string', 'fn_api_key', 'search_source',
+              'fn_api_key', 'fn_api_secret', 'search_source',
               'mp_host', 'mp_username', 'mp_password', 'mp_token'];
 // 复选框单独处理（不是文本框）
 const BOOL_KEYS = ['request_enabled'];

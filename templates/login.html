@@ -29,10 +29,9 @@
         </label>
 
         <label class="field" style="display:flex;align-items:center;gap:8px">
-            <input type="checkbox" id="via_fn" style="width:auto"
-                   {% if not fn_login_available %}disabled{% endif %}>
+            <input type="checkbox" id="via_fn" style="width:auto">
             <span style="margin:0">使用飞牛影视账号校验
-                {% if not fn_login_available %}<span class="faint">（需先配置 authx 签名素材）</span>{% endif %}
+                <span class="faint">（需在系统设置里填好飞牛地址与账号）</span>
             </span>
         </label>
 

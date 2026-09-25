@@ -1,33 +1,39 @@
 """
-authx 签名验证工具 —— 确认你从飞牛影视 Web 端提取的素材是否正确。
+authx 签名验证工具 —— 校验签名实现与抓包是否一致。
 
-背景：authx 的 sign = md5(secret + "_" + path + "_" + nonce + "_" + timestamp
-                      + "_" + body_hash + "_" + api_key)
-其中 secret / api_key 是飞牛影视 Web 前端内置常量，官方未公开，
-只能从浏览器加载的 JS 里提取。本工具不联网，纯粹本地重算并比对，
-让你在配置之前就能确认提取是否成功。
+背景：authx 的
+    sign = md5( API_KEY _ path _ nonce _ timestamp _ body_hash _ API_SECRET )
+两段密钥内嵌于官方 trimemedia-web 前端（逆向自 MoviePilot / bili-plan），
+已随本项目内置为默认值。本工具不联网，纯本地重算比对，用途：
+    * 校验本项目/你自己的签名实现是否正确
+    * 飞牛升级后若出现 code=5000 invalid sign，用新抓的包验证新密钥
 
 用法一（推荐）：贴一条抓到的请求
     python tools/verify_authx.py \
-        --secret "你的secret" --api-key "你的key" \
         --url "http://nas:5666/v/api/v1/mdb/list" \
         --method GET \
         --authx "nonce=123456&timestamp=1735000000000&sign=abcd..."
 
+省略 --secret/--api-key 时使用内置默认密钥；覆盖时显式传参即可。
+
 用法二：手动给分量
     python tools/verify_authx.py \
-        --secret S --api-key K \
         --path /v/api/v1/mdb/list --method GET \
         --nonce 123456 --timestamp 1735000000000 --sign abcd...
 
-GET 请求的查询串用 --url 带上即可（会自动解析）；POST 请求加 --body '{...}'。
+注意：GET 的 body_hash 用「未 urlencode」的 k=v&k2=v2 原文（与官方客户端一致）；
+     POST 用请求体 JSON 原文。
 """
 
 import argparse
 import hashlib
 import json
 import sys
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, urlsplit
+
+# 与 app/core/fn_client.py 保持一致的内置密钥
+DEFAULT_API_KEY = "NDzZTVxnRKP8Z0jXg1VAMonaG8akvh"
+DEFAULT_API_SECRET = "16CCEB3D-AB42-077D-36A1-F355324E4237"
 
 
 def md5(text: str) -> str:
@@ -44,10 +50,15 @@ def serialize_body(data) -> str:
 
 
 def body_hash_for(method: str, params=None, body=None) -> str:
-    """与 fn_client._cse_sign 的分支一致：GET 用排序后的查询串，其余用 JSON。"""
+    """
+    与 fn_client._cse_sign 的分支一致。
+    GET 用「未 urlencode」的 k=v&k2=v2 原文（按传入顺序），
+    这一点与官方客户端一致，urlencode 反而会验签失败。
+    """
     if method.upper() == "GET":
-        items = [(str(k), str(v)) for k, v in (params or {}).items()]
-        return md5(urlencode(sorted(items)))
+        if not params:
+            return md5("")
+        return md5("&".join(f"{k}={v}" for k, v in params.items()))
     return md5(serialize_body(body))
 
 
@@ -87,9 +98,11 @@ def hmac_equal(a: str, b: str) -> bool:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="验证飞牛影视 authx 签名素材")
-    p.add_argument("--secret", required=True, help="fn_secret_string")
-    p.add_argument("--api-key", required=True, help="fn_api_key")
+    p = argparse.ArgumentParser(description="验证飞牛影视 authx 签名")
+    p.add_argument("--secret", default=DEFAULT_API_SECRET,
+                   help="签名串末段（默认用内置 API_SECRET）")
+    p.add_argument("--api-key", default=DEFAULT_API_KEY,
+                   help="签名串第一段（默认用内置 API_KEY）")
     p.add_argument("--url", help="完整请求 URL（含查询串）")
     p.add_argument("--path", help="相对路径，如 /v/api/v1/mdb/list")
     p.add_argument("--method", default="GET", help="GET / POST，默认 GET")
@@ -131,16 +144,20 @@ def main() -> int:
 
     print(f"path          : {path}")
     print(f"method        : {args.method.upper()}")
+    print(f"api_key(1st)  : {args.api_key}")
+    print(f"api_secret(end): {args.secret}")
     print(f"body_hash     : {r['body_hash']}")
     print(f"string_to_sign: {r['string_to_sign']}")
     print(f"expected sign : {r['expected_sign']}")
     print(f"given sign    : {r['given_sign']}")
     print()
     if r["match"]:
-        print("✅ 匹配 —— 签名素材正确，可直接填入 FnPulse 配置。")
+        print("OK  匹配 —— 签名算法与密钥一致。")
         return 0
-    print("❌ 不匹配 —— secret 或 api_key 提取有误，或 path/body 与抓包时不一致。")
-    print("   提示：确认用的是相对路径（不含主机名），且 method/查询串/请求体与抓包一致。")
+    print("X   不匹配 —— 可能原因：")
+    print("    1. 密钥已随飞牛升级变更（出现 code=5000 时优先怀疑）")
+    print("    2. path 必须是相对路径（不含主机名），且与抓包时完全一致")
+    print("    3. GET 的查询串不能 urlencode；POST 用请求体 JSON 原文")
     return 1
 
 
