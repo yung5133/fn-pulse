@@ -10,13 +10,14 @@ MoviePilot 对接客户端。
     POST /api/v1/subscribe/           新增订阅（Subscribe JSON）
     GET  /api/v1/subscribe/           查询订阅
 
-三个易错点，均已处理：
+    三个易错点，均已处理：
     * Subscribe.type 是中文枚举：电影 / 电视剧（不是 movie / tv）
     * 登录是 OAuth2 表单体，不是 JSON
-    * 鉴权必须用登录换来的 JWT（Authorization: Bearer <token>）。
-      MP 的静态 API_TOKEN **不是 JWT**，只在少数查询接口上有效
-      （如 /api/v1/subscribe/list），拿到订阅接口上会报
-      "token校验不通过" —— 因此这里不做静态令牌直连，一律账号密码登录。
+    * 鉴权头的选择是关键：MP 的 verify_token 接受三种凭据之一 ——
+      Authorization: Bearer <登录JWT>、X-API-KEY: <API_TOKEN> 头、
+      或 ?token= / ?apikey= 查询参数。
+      静态 API_TOKEN **不能装进 Bearer**（它不是 JWT，会走 JWT 解码分支报
+      "token校验不通过"），必须用 X-API-KEY 头 —— emby-pulse 正是这么做的。
 """
 
 import threading
@@ -60,18 +61,27 @@ class MoviePilotClient:
     def password(self) -> str:
         return cfg.get("mp_password", "")
 
+    @property
+    def static_token(self) -> str:
+        """MP 管理员 API_TOKEN，通过 X-API-KEY 头使用（非 Bearer）。"""
+        return str(cfg.get("mp_token") or "").strip().strip("'\"")
+
     def is_configured(self) -> bool:
-        return bool(self.host and self.username and self.password)
+        return bool(self.host and (self.static_token or (self.username and self.password)))
 
     # ---------------- 鉴权 ----------------
+    def _auth_headers(self, force: bool = False) -> Dict[str, str]:
+        """
+        组装鉴权头。静态 API_TOKEN 走 X-API-KEY（免登录、管理员级身份）；
+        否则用账号密码登录换 JWT 走 Bearer。
+        """
+        if self.static_token:
+            return {"X-API-KEY": self.static_token}
+        return {"Authorization": f"Bearer {self._token_value(force=force)}"}
+
     def _login(self) -> str:
-        if not self.host:
-            raise MoviePilotError("未配置 MoviePilot 地址")
         if not (self.username and self.password):
-            raise MoviePilotError(
-                "未配置 MoviePilot 用户名/密码。注意：MP 的静态 API_TOKEN "
-                "不能用于订阅下发接口，必须使用账号密码登录"
-            )
+            raise MoviePilotError("未配置 MoviePilot 用户名/密码")
         try:
             resp = self.session.post(
                 f"{self.host}/api/v1/login/access-token",
@@ -106,18 +116,17 @@ class MoviePilotClient:
                  form: Optional[dict] = None) -> Any:
         if not self.host:
             raise MoviePilotError("未配置 MoviePilot 地址")
-        if not (self.username and self.password):
+        if not self.is_configured():
             raise MoviePilotError(
-                "未配置 MoviePilot 用户名/密码，无法鉴权。"
-                "静态 API_TOKEN 仅支持部分查询接口，订阅下发必须账号密码登录"
+                "未配置 MoviePilot 鉴权：请填写账号密码，或管理员 API_TOKEN"
             )
 
         url = f"{self.host}{path}"
         force = False
         last_detail = ""
-        # 401 时强制重登重试一次；仍失败则把 MP 的 detail 原样带出，便于定位
+        # 401 时强制重登/重试一次；仍失败则把 MP 的 detail 原样带出，便于定位
         for attempt in range(2):
-            headers = {"Authorization": f"Bearer {self._token_value(force=force)}"}
+            headers = self._auth_headers(force=force)
             try:
                 resp = self.session.request(method, url, headers=headers, params=params,
                                             json=json_body, data=form, timeout=25)
@@ -139,8 +148,12 @@ class MoviePilotClient:
                     detail = str(body.get("detail") or body.get("message") or body)[:200]
                 except Exception:  # noqa: BLE001
                     detail = resp.text[:120]
+                hint = ""
+                if "token" in detail.lower() or "校验不通过" in detail:
+                    hint = (" —— 静态 API_TOKEN 已变更时请在系统设置更新；"
+                            "若使用账号密码登录，请确认账号未失效")
                 raise MoviePilotError(
-                    f"MoviePilot 返回 HTTP {resp.status_code}：{detail or '无详情'}"
+                    f"MoviePilot 返回 HTTP {resp.status_code}：{detail or '无详情'}{hint}"
                 )
             break
 

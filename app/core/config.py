@@ -64,10 +64,13 @@ DEFAULT_CONFIG = {
 
     # ---- MoviePilot 对接（求片一键下发为 MP 订阅）----
     # 地址如 http://127.0.0.1:3000；账号密码走 OAuth2 表单登录拿 access_token。
-    # 注意：MP 的静态 API_TOKEN 不是 JWT，无法用于订阅下发接口，故不做该选项。
+    # mp_token 为 MP 管理员 API_TOKEN，通过 X-API-KEY 头使用（免登录、管理员身份）；
+    # 与账号密码二选一。注意不能装进 Authorization: Bearer —— 它不是 JWT，
+    # 那样会走 JWT 解码分支报 "token校验不通过"。
     "mp_host": os.getenv("MP_HOST", "").strip().rstrip("/"),
     "mp_username": os.getenv("MP_USERNAME", "").strip(),
     "mp_password": os.getenv("MP_PASSWORD", "").strip(),
+    "mp_token": os.getenv("MP_TOKEN", "").strip(),
 }
 
 _LOCK = threading.RLock()

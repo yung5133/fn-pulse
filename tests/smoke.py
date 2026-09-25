@@ -324,6 +324,24 @@ def main() -> int:
     r = c.get("/api/moviepilot/config").json()["data"]
     results.append(("MP 配置回填后 configured=True", r.get("configured") is True, str(r)))
 
+    # 静态 API_TOKEN 必须走 X-API-KEY 头（此前误用 Bearer 导致 token校验不通过）
+    _cfg.set("mp_token", '"quoted-token"')
+    _cfg.set("mp_username", "")
+    _cfg.set("mp_password", "")
+    h = _mp._auth_headers()
+    results.append(("MP 静态令牌走 X-API-KEY 且去除引号",
+                    h.get("X-API-KEY") == "quoted-token" and "Authorization" not in h, str(h)))
+    _cfg.set("mp_token", "")
+    _cfg.set("mp_username", "admin")
+    _cfg.set("mp_password", "pass123")
+    # 直接注入缓存 JWT，避免 _auth_headers 触发真实登录请求
+    _mp._token = "jwt-test"
+    _mp._token_at = time.time()
+    h2 = _mp._auth_headers()
+    results.append(("MP 账号密码走 Bearer JWT",
+                    h2.get("Authorization") == "Bearer jwt-test"
+                    and "X-API-KEY" not in h2, str(h2)))
+
     # 清理，避免影响后续隔离断言的计数
     for x in c.get("/api/requests").json()["data"]:
         c.delete(f"/api/requests/{x['id']}")

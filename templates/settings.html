@@ -120,8 +120,9 @@
         求片可一键下发为 MoviePilot 订阅，由 MP 负责搜索下载整理；
         之后用求片管理页的「检测入库闭环」把状态推进到已入库。
         地址形如 <span class="mono">http://127.0.0.1:3000</span>。
-        必须填写<b>登录 MP 用的账号密码</b> —— MP 的静态 API_TOKEN 不是 JWT，
-        无法调用订阅下发接口。
+        二选一：填<b>登录 MP 用的账号密码</b>，或填 MP 管理员
+        <b>API_TOKEN</b>（环境变量 API_TOKEN，经 X-API-KEY 头使用，免登录）。
+        注意 API_TOKEN 不能放进 Bearer 头使用，否则报 "token校验不通过"。
     </p>
     <div class="grid grid-2">
         <label class="field">
@@ -135,6 +136,10 @@
         <label class="field">
             <span>密码</span>
             <input type="password" id="mp_password" autocomplete="new-password">
+        </label>
+        <label class="field" style="grid-column:1 / -1">
+            <span>或：管理员 API_TOKEN（与账号密码二选一，填了它可免登录）</span>
+            <input type="text" id="mp_token" autocomplete="off">
         </label>
     </div>
     <button id="btn_mp_test" class="btn-sm">测试 MoviePilot 连接</button>
@@ -165,7 +170,7 @@
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
               'fn_api_key', 'fn_api_secret', 'search_source',
-              'mp_host', 'mp_username', 'mp_password'];
+              'mp_host', 'mp_username', 'mp_password', 'mp_token'];
 // 复选框单独处理（不是文本框）
 const BOOL_KEYS = ['request_enabled'];
 // 求片口令：留空表示不要求口令
