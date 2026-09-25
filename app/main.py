@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.core.config import PORT, SECRET_KEY, USER_PORT, cfg
+from app.core.config import APP_VERSION, PORT, SECRET_KEY, USER_PORT, cfg
 from app.core.database import init_db
 from app.routers import (  # noqa: F401
     auth,
@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI):
     print("\n[系统] FnPulse 已停止。")
 
 
-app = FastAPI(title="FnPulse", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="FnPulse", version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=86400 * 7)
 app.add_middleware(

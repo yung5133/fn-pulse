@@ -19,7 +19,7 @@ BIZ_DB_PATH = os.path.join(CONFIG_DIR, "fnpulse.db")
 # 飞牛影视媒体库数据库（SQLite 引擎只读来源）
 DEFAULT_FN_DB = "/fn-data/trimmedia.db"
 
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+APP_VERSION = os.getenv("APP_VERSION", "0.3.0")
 
 DEFAULT_CONFIG = {
     # ---- 飞牛影视连接 ----

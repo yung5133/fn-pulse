@@ -23,6 +23,9 @@ jobs:
   build:
     name: 构建 linux/${{ matrix.platform }}
     runs-on: ubuntu-latest
+    # 把版本号透传给 merge job（step 输出不会自动跨 job）
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +34,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: 计算版本号
+        id: ver
+        run: |
+          BASE=$(tr -d '[:space:]' < VERSION)
+          VERSION="${BASE}.${{ github.run_number }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "本次构建版本: ${VERSION}"
 
       - name: 准备 QEMU（跨架构模拟）
         uses: docker/setup-qemu-action@v3
@@ -51,8 +62,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
+            type=raw,value=${{ steps.ver.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=semver,pattern=v{{version}}
             type=semver,pattern=v{{major}}.{{minor}}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
@@ -68,6 +80,8 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true
@@ -114,12 +128,29 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
+            type=raw,value=${{ needs.build.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=semver,pattern=v{{version}}
             type=semver,pattern=v{{major}}.{{minor}}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
             type=sha,prefix=sha-,format=short
+
+      - name: 写入构建摘要
+        run: |
+          {
+            echo "### 本次构建的镜像标签"
+            echo ""
+            echo '```'
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}"
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            echo '```'
+            echo ""
+            echo "更新容器："
+            echo '```bash'
+            echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 创建并推送 manifest list
         working-directory: /tmp/digests
