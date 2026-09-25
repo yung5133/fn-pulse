@@ -195,6 +195,22 @@ def main() -> int:
     )
     results.append(("豆瓣解析器（类型映射/海报放大/脏数据过滤）", ok_parse, str(parsed)[:160]))
 
+    # ---- authx 验证工具与客户端签名算法必须一致（防止两处实现漂移） ----
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+    import verify_authx  # noqa: E402
+
+    from app.core.config import cfg as _cfg
+    from app.core.fn_client import fn_client as _fc
+
+    _cfg.set("fn_secret_string", "test-secret")
+    _cfg.set("fn_api_key", "test-key")
+    _method, _path, _body = "POST", "/v/api/v1/task/stop", {"guid": "g1", "type": "TaskItemScrap"}
+    authx = _fc._cse_sign(_method, _path, None, _body)
+    nonce, ts, sign = verify_authx.parse_authx(authx)
+    v = verify_authx.verify(_cfg.get("fn_secret_string"), _cfg.get("fn_api_key"),
+                            _method, _path, None, _body, nonce, ts, sign)
+    results.append(("authx 工具与客户端算法一致", bool(v["match"]), str(v)[:140]))
+
     check("GET", "/logout", 302)
     check("GET", "/", 302)
 

@@ -29,9 +29,12 @@ emby-pulse 依赖 Emby 官方 **Playback Reporting 插件**提供的 `submit_cus
 
 ## 快速部署
 
-### Docker Compose（推荐）
-
 镜像由 GitHub Actions 自动构建并推送到 GHCR，支持 `linux/amd64` 与 `linux/arm64`。
+
+| 端口 | 用途 |
+| --- | --- |
+| `http://<你的IP>:10207` | 🔒 管理员后台 |
+| `http://<你的IP>:10208` | 👤 用户求片门户 |
 
 ```yaml
 version: "3.8"
@@ -52,13 +55,6 @@ services:
       - ADMIN_PASSWORD=请改成强密码
 ```
 
-启动后访问两个地址：
-
-| 端口 | 用途 |
-| --- | --- |
-| `http://<你的IP>:10207` | 🔒 管理员后台 |
-| `http://<你的IP>:10208` | 👤 用户求片门户 |
-
 ### 端口号：为什么是 10207 / 10208
 
 上游 emby-pulse 占用 `10307`（管理后台）和 `10308`（用户求片门户）——
@@ -71,7 +67,7 @@ services:
 
 ```bash
 pip install -r requirements.txt
-CONFIG_DIR=./config FN_DB_PATH=/path/to/trimmedia.db PORT=10308 python run.py
+CONFIG_DIR=./config FN_DB_PATH=/path/to/trimmedia.db PORT=10207 USER_PORT=10208 python run.py
 ```
 
 跑测试（使用合成的 `trimmedia.db`，不接触真实数据）：
@@ -135,6 +131,65 @@ body_hash(其他) = md5(json.dumps(body, sort_keys=True,
 > ⚠️ `secret_string` 与 `api_key` 是飞牛影视 Web 端的内置常量，**官方从未公开**，
 > 本项目无法内置。未配置时媒体库列表与扫描功能不可用，界面会明确提示；
 > **播放统计不受任何影响**。
+
+### 如何获取签名素材
+
+这两个值写死在飞牛影视的 Web 前端 JS 里，**每个访问过 Web 端的浏览器都下载过它们**，
+所以不是什么机密，只是没人正式文档化。提取步骤：
+
+1. 浏览器打开 `http://<NAS的IP>:5666` 并登录飞牛影视
+2. 按 `F12` 打开开发者工具 → 切到 **Sources（源代码）** 面板
+3. 按 `Ctrl+Shift+F` 做**全局搜索**（跨所有已加载的 JS 文件）
+4. 依次试这些关键词，直到找到拼接逻辑：
+   * `authx`
+   * `secret`
+   * `api_key`
+   * `subject_suggest`（如果上面没中，说明代码被压缩改名了，就顺着 md5/签名函数找）
+5. 你要找的是形如这样的两行常量赋值（变量名可能不同，值是重点）：
+
+```js
+const SECRET = "xxxxxxxxxxxxxxxx";     // -> fn_secret_string
+const API_KEY = "yyyyyyyyyyyyyyyy";    // -> fn_api_key
+```
+
+6. 提取后**务必先用工具验证**，别急着填配置：
+
+```bash
+# 抓一条真实请求（Network 面板里任选一条，复制它的 URL 和 authx 请求头）
+python tools/verify_authx.py \
+    --secret "xxxxxxxx" --api-key "yyyyyyyy" \
+    --url "http://<NAS>:5666/v/api/v1/mdb/list" \
+    --method GET \
+    --authx "nonce=123456&timestamp=1735000000000&sign=abcd..."
+```
+
+输出 `✅ 匹配` 说明素材正确；`❌ 不匹配` 通常是三个原因：
+* 路径不对 —— 必须是**相对路径**（不含主机名），且与抓包时完全一致
+* method 不对 —— GET 的 body_hash 来自排序后的查询串，POST 来自排序后的 JSON
+* 值本身提错了 —— 回到第 4 步，找的是**常量**而不是某次请求里的临时值
+
+7. 验证通过后，二选一写入配置：
+
+```yaml
+# docker-compose.yml
+environment:
+  - FN_SECRET_STRING=xxxxxxxx
+  - FN_API_KEY=yyyyyyyy
+```
+
+或登录后台 `http://<IP>:10207` → 系统设置 → 「REST 签名素材（可选）」两张输入框。
+
+### 配置之后能解锁什么
+
+| 能力 | 无素材 | 有素材 |
+| --- | --- | --- |
+| 播放统计 / 历史 / 风云榜 / 洞察 | ✅ 走 SQLite | ✅（不变） |
+| 媒体库列表 + 触发扫描 | ❌ | ✅ |
+| 登录页「使用飞牛影视账号校验」 | ❌ | ✅ |
+| 求片门户 | ✅（不依赖） | ✅（不依赖） |
+
+注意这两值是**版本相关**的：飞牛影视更新前端后可能变化，届时重新提取即可。
+本项目的算法实现与 `tools/verify_authx.py` 有一致性测试保证，不会各改各的。
 
 ---
 
