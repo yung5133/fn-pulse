@@ -94,12 +94,20 @@
     <div class="card-head"><h2 class="card-title">求片门户</h2></div>
     <p class="faint" style="margin:0 0 12px;font-size:12.5px">
         门户运行在独立端口（默认 10208），与管理后台物理隔离。
-        由于飞牛影视无法校验用户密码，门户不要求登录，由用户自填飞牛用户名；
-        对外开放时建议设置提交口令。
+        默认要求用户用<b>飞牛影视账号登录</b>后才能求片，提交人取自登录态、
+        无法伪造成他人；需在「飞牛影视连接」里填好地址。
     </p>
     <label class="field" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="request_enabled" style="width:auto">
         <span style="margin:0">开放求片通道</span>
+    </label>
+    <label class="field">
+        <span>门户鉴权方式</span>
+        <select id="portal_auth_mode">
+            <option value="fn">飞牛账号登录（推荐，提交人不可伪造）</option>
+            <option value="passcode">仅提交口令（用户自报用户名）</option>
+            <option value="none">完全开放（仅内网/测试）</option>
+        </select>
     </label>
     <label class="field">
         <span>选片搜索源</span>
@@ -170,7 +178,7 @@
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
               'fn_api_key', 'fn_api_secret', 'search_source',
-              'mp_host', 'mp_username', 'mp_password', 'mp_token'];
+              'mp_host', 'mp_username', 'mp_password', 'mp_token', 'portal_auth_mode'];
 // 复选框单独处理（不是文本框）
 const BOOL_KEYS = ['request_enabled'];
 // 求片口令：留空表示不要求口令

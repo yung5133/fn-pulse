@@ -52,6 +52,10 @@ PORTAL_EXACT_PATHS = {
     "/api/requests/submit",
     "/api/requests/search",
     "/api/requests/mine",
+    # 门户登录相关：只放行登录/登出/查自己，后台的管理接口仍被隔离
+    "/api/requests/portal_login",
+    "/api/requests/portal_logout",
+    "/api/requests/me",
 }
 PORTAL_PREFIX_PATHS = ("/static",)
 

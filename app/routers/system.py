@@ -26,7 +26,7 @@ WRITABLE_KEYS = {
     "playback_data_mode", "fn_db_path", "db_copy_ttl",
     "hidden_users", "timezone_offset_hours",
     "tmdb_api_key", "proxy_url", "webhook_token",
-    "request_enabled", "request_passcode", "search_source",
+    "request_enabled", "portal_auth_mode", "request_passcode", "search_source",
     "mp_host", "mp_username", "mp_password", "mp_token",
 }
 
@@ -67,6 +67,10 @@ def save_settings(body: SettingsModel, _=Depends(require_login)):
             v = bool(v)
         if k == "request_passcode":
             v = str(v).strip()
+        if k == "portal_auth_mode":
+            v = str(v).lower()
+            if v not in ("fn", "passcode", "none"):
+                continue
         if k == "search_source":
             v = str(v).lower()
             if v not in ("douban", "tmdb"):

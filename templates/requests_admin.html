@@ -10,9 +10,10 @@
 </div>
 
 <div id="alert" class="alert alert-info">
-    用户侧无需登录，采用「自报飞牛用户名 + 片名」的点片箱模式（实现最简、零配置可用）。
-    飞牛 REST 登录可校验密码，后续可把门户升级为飞牛账号登录；
-    对外开放时建议先在系统设置里配置 <b>request_passcode</b> 提交口令。
+    门户默认要求用户用<b>飞牛影视账号登录</b>后才能求片（见系统设置「门户鉴权方式」），
+    提交人取自登录会话、由服务端写入，用户无法伪造成他人 —— 这类记录标注为
+    「已验证」。若切到「仅提交口令」或「完全开放」档位，提交人为用户自报，
+    标注为「自报」。
 </div>
 
 <div class="card">
@@ -170,7 +171,11 @@ async function load() {
                 <td><span class="badge">${TYPE_TEXT[x.media_type] || x.media_type}</span>
                     ${x.season ? `<span class="badge badge-info" style="margin-left:4px">第${x.season}季</span>` : ''}
                 </td>
-                <td>${x.requester}</td>
+                <td>${x.requester}
+                    ${x.requester_verified
+                        ? '<span class="badge badge-ok" style="margin-left:4px">已验证</span>'
+                        : '<span class="badge" style="margin-left:4px">自报</span>'}
+                </td>
                 <td class="dim" style="max-width:220px">${x.note || '<span class="faint">—</span>'}</td>
                 <td class="mono dim">${x.created_at}</td>
                 <td><span class="badge ${x.status_badge}">${x.status_text}</span></td>

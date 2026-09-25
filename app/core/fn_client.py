@@ -246,6 +246,48 @@ class FnClient:
     def post(self, path: str, data: Any = None) -> dict:
         return self.request("POST", path, data=data or {})
 
+    # ---------------- 普通用户凭证校验（求片门户登录用） ----------------
+    def verify_credentials(self, username: str, password: str) -> Tuple[bool, str]:
+        """
+        用给定的账号密码做一次登录校验，返回 (是否通过, 失败原因)。
+
+        刻意在**独立实例**上发起请求，避免覆盖单例持有的管理员 token。
+        校验失败与网络失败的文案分开，便于用户自查。
+        """
+        if not self.host:
+            return False, "未配置飞牛影视地址，无法校验账号"
+
+        tmp = FnClient()
+        sha256 = hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+        # v2：密码传 SHA256；v2 接口不可用时回退 v1 明文
+        try:
+            resp = tmp._raw("POST", FnClient.API_LOGIN_V2,
+                            data={"username": username, "password": sha256,
+                                  "app_name": self.app_name})
+            if (resp.get("data") or {}).get("token"):
+                return True, ""
+        except FnApiError as e:
+            # v2 存在但被拒 -> 账号密码问题，不必回退
+            if e.code not in (0, -1):
+                return False, "账号或密码错误"
+        except requests.exceptions.RequestException:
+            pass  # 落到 v1 再试
+
+        try:
+            resp = tmp._raw("POST", FnClient.API_LOGIN,
+                            data={"username": username, "password": password,
+                                  "app_name": self.app_name})
+            if (resp.get("data") or {}).get("token"):
+                return True, ""
+            return False, "账号或密码错误"
+        except FnApiError as e:
+            if e.code == 5000:
+                return False, "签名校验失败（code=5000）：飞牛升级后签名密钥可能已变更"
+            return False, f"校验失败：{e.msg}"
+        except requests.exceptions.RequestException as e:
+            return False, f"无法连接飞牛影视：{e}"
+
     # ---------------- 健康自检 ----------------
     def test_connection(self) -> Tuple[bool, str]:
         """返回 (是否可用, 说明)。用于设置页连通性测试。"""

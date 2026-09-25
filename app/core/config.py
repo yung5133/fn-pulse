@@ -54,10 +54,12 @@ DEFAULT_CONFIG = {
     "webhook_token": "fnpulse",
 
     # ---- 求片门户 ----
-    # 求片门户不要求用户登录（自报飞牛用户名 + 片名，零配置可用）。
-    # 飞牛 REST 登录可校验密码，后续可升级为飞牛账号登录。
-    # 设置 request_passcode 后提交需附加口令，避免对外开放时被滥用。
+    # portal_auth_mode 三档：
+    #   fn        必须登录飞牛影视账号（默认，推荐）—— 提交人取自会话，不可伪造
+    #   passcode  只需提交口令（request_passcode），提交人自报
+    #   none      完全开放自报（仅内网/测试）
     "request_enabled": True,
+    "portal_auth_mode": "fn",
     "request_passcode": "",
     # 选片搜索源：douban（默认，无需任何 Key）/ tmdb（需 tmdb_api_key，国内要代理）
     "search_source": "douban",

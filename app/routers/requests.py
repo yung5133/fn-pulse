@@ -1,24 +1,24 @@
 """
 求片系统。
 
-设计约束（与 emby-pulse 的关键差异）
-------------------------------------
-emby-pulse 的求片门户要求用户"用 Emby 账号登录"，因为它能通过
-`/Users/AuthenticateByName` 校验密码。飞牛影视的 REST 登录（v2/v1）理论上
-也能校验用户密码，且签名密钥现已内置 —— 把门户改成飞牛账号登录是可行的
-后续方向。
+门户鉴权（portal_auth_mode）三档，默认 fn：
+    fn        必须用**飞牛影视账号登录**，提交人取自会话，不再自报（推荐）
+    passcode  只需提交口令（request_passcode），提交人自报
+    none      完全开放自报（仅内网/测试用）
 
-当前版本仍采用**自报身份 + 可选口令**的模式：用户填写飞牛用户名与想看的片名，
-管理员在后台审核。定位是"点片箱"，实现最简单、零配置即可用。
+fn 档之所以可行：飞牛 REST 的 authx 签名密钥已内置，且
+/v/api/v2|v1 的登录接口可以用任意用户自己的账号密码校验，
+不需要管理员token —— 与 emby-pulse 用 /Users/AuthenticateByName 同理。
 
 安全边界：求片门户运行在独立端口（默认 10208）上的独立 ASGI 引擎，
-路径白名单之外一律 404，无法越权触达后台接口 —— 与 emby-pulse 的物理隔离一致。
+路径白名单之外一律 404，无法越权触达后台接口。
 """
 
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core import database as db
@@ -28,9 +28,26 @@ from app.routers.auth import require_login
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
 
+# 门户会话在 session 中的键名。与后台的 fn_user 并存于同一 cookie，
+# 互不覆盖 —— 同浏览器既是管理员又在门户登录时两者都能保持。
+PORTAL_SESSION_KEY = "portal_user"
+
 # 0 待处理 / 1 已下载 / 2 已入库 / 3 已拒绝
 STATUS_TEXT = {0: "待处理", 1: "已下载", 2: "已入库", 3: "已拒绝"}
 STATUS_BADGE = {0: "badge-warn", 1: "badge-info", 2: "badge-ok", 3: "badge-err"}
+
+AUTH_MODES = ("fn", "passcode", "none")
+
+
+def auth_mode() -> str:
+    m = str(cfg.get("portal_auth_mode", "fn")).lower()
+    return m if m in AUTH_MODES else "fn"
+
+
+def portal_user(request: Request) -> dict:
+    """取门户登录态（与后台管理员登录态分开存放）。"""
+    u = request.session.get(PORTAL_SESSION_KEY)
+    return u if isinstance(u, dict) and u.get("name") else {}
 
 
 def _row(r) -> dict:
@@ -51,6 +68,7 @@ def _row(r) -> dict:
         "admin_note": d["admin_note"] or "",
         "tmdb_id": d.get("tmdb_id"),
         "douban_id": d.get("douban_id") or "",
+        "requester_verified": bool(d.get("requester_verified")),
         "poster_url": d.get("poster_path") or "",   # 列名沿用 poster_path，存的是完整 URL
         "overview": d.get("overview") or "",
         "mp_subscribe_id": d.get("mp_subscribe_id"),
@@ -77,13 +95,65 @@ class SubmitModel(BaseModel):
 
 
 @router.get("/config")
-def portal_config():
-    """门户端读取：是否开放、是否需要口令、能否用 TMDB 搜索。"""
+def portal_config(request: Request):
+    """门户端读取：是否开放、鉴权档位、是否需要口令、能否用 TMDB 搜索。"""
+    mode = auth_mode()
     return ok({
         "enabled": bool(cfg.get("request_enabled", True)),
-        "need_passcode": bool(cfg.get("request_passcode", "")),
+        "auth_mode": mode,
+        "need_passcode": mode == "passcode" and bool(cfg.get("request_passcode", "")),
         "search_source": _search_source(),
         "tmdb_enabled": bool(cfg.get("tmdb_api_key", "")),
+        "logged_in": bool(portal_user(request)),
+    })
+
+
+# ================= 门户登录（飞牛账号校验） =================
+class PortalLoginModel(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/portal_login")
+def portal_login(data: PortalLoginModel, request: Request):
+    """
+    用飞牛影视账号登录求片门户。
+
+    校验在独立实例上发起，不会影响后台持有的管理员 token。
+    """
+    if auth_mode() != "fn":
+        return JSONResponse(
+            {"status": "error", "message": "当前门户未启用飞牛账号登录"}, status_code=400
+        )
+    username = (data.username or "").strip()
+    if not username or not data.password:
+        return JSONResponse(
+            {"status": "error", "message": "请输入飞牛影视账号和密码"}, status_code=400
+        )
+
+    from app.core.fn_client import fn_client
+
+    ok_flag, msg = fn_client.verify_credentials(username, data.password)
+    if not ok_flag:
+        return JSONResponse({"status": "error", "message": msg}, status_code=401)
+
+    request.session[PORTAL_SESSION_KEY] = {"name": username}
+    return ok({"username": username})
+
+
+@router.post("/portal_logout")
+def portal_logout(request: Request):
+    request.session.pop(PORTAL_SESSION_KEY, None)
+    return ok({"logged_out": True})
+
+
+@router.get("/me")
+def portal_me(request: Request):
+    u = portal_user(request)
+    return ok({
+        "logged_in": bool(u),
+        "username": u.get("name", ""),
+        "auth_mode": auth_mode(),
     })
 
 
@@ -218,13 +288,32 @@ def _search_douban(query: str):
 
 
 @router.post("/submit")
-def submit(data: SubmitModel):
+def submit(data: SubmitModel, request: Request):
     if not cfg.get("request_enabled", True):
         return {"status": "error", "message": "求片通道当前已关闭"}
 
-    want = (cfg.get("request_passcode") or "").strip()
-    if want and data.passcode != want:
-        return {"status": "error", "message": "提交口令不正确"}
+    mode = auth_mode()
+    verified = 0
+    requester = (data.requester or "").strip()
+
+    if mode == "fn":
+        # 登录态为准，忽略前端自报的用户名 —— 这是该档位的核心价值
+        u = portal_user(request)
+        if not u:
+            return JSONResponse(
+                {"status": "error", "message": "请先登录飞牛影视账号"}, status_code=401
+            )
+        requester = u["name"]
+        verified = 1
+    elif mode == "passcode":
+        want = (cfg.get("request_passcode") or "").strip()
+        if want and data.passcode != want:
+            return {"status": "error", "message": "提交口令不正确"}
+
+    if not requester:
+        return JSONResponse(
+            {"status": "error", "message": "缺少提交人"}, status_code=400
+        )
 
     media_type = data.media_type if data.media_type in ("movie", "series", "episode") else "movie"
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -234,23 +323,33 @@ def submit(data: SubmitModel):
 
     db.execute(
         """INSERT INTO media_requests
-           (title, media_type, season, year, note, requester, status, admin_note,
-            tmdb_id, douban_id, poster_path, overview, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?)""",
+           (title, media_type, season, year, note, requester, requester_verified,
+            status, admin_note, tmdb_id, douban_id, poster_path, overview,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?)""",
         (data.title.strip(), media_type, max(0, int(data.season or 0)),
          (data.year or "").strip()[:16], (data.note or "").strip()[:500],
-         data.requester.strip(),
+         requester, verified,
          tmdb_id, douban_id, (data.poster_url or "").strip()[:400],
          (data.overview or "").strip()[:600],
          now, now),
     )
-    return ok({"title": data.title.strip()})
+    return ok({"title": data.title.strip(), "requester": requester, "verified": bool(verified)})
 
 
 @router.get("/mine")
-def mine(requester: str = ""):
-    """按用户名查看自己提交过的请求。"""
-    requester = (requester or "").strip()
+def mine(request: Request, requester: str = ""):
+    """
+    查看自己提交过的请求。
+
+    fn 档位下强制以会话身份为准，不允许通过参数窥探他人记录。
+    """
+    if auth_mode() == "fn":
+        u = portal_user(request)
+        requester = u.get("name", "") if u else ""
+    else:
+        requester = (requester or "").strip()
+
     if not requester:
         return ok([])
     rows = db.query(

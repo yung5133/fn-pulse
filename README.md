@@ -201,16 +201,23 @@ python tools/verify_authx.py \
 
 对应 emby-pulse 的求片中心，形态上做了两处适配：
 
-**1. 门户不要求登录，采用「自报飞牛用户名 + 片名」。**
+**1. 门户默认要求用飞牛影视账号登录（`portal_auth_mode=fn`）。**
 
-emby-pulse 的门户要求用户"用 Emby 账号登录"，因为它能调 `/Users/AuthenticateByName`
-校验密码。飞牛影视做不到：
-* REST 登录需要官方未公开的 `authx` 签名素材；
-* `trimmedia.db` 里的口令是自家哈希，格式未确认，不宜依赖。
+用户必须先用**自己的飞牛影视账号**登录门户，之后提交的求片，**提交人取自服务端会话**
+（不是前端自报），用户无法伪造成他人，后台列表会标注「已验证」。
 
-所以门户采用**自报身份**模式，并提供一个可选的 `request_passcode` 提交口令，
-对外开放时建议设置。门户运行在独立端口（`10208`）上的独立 ASGI 引擎，
-路径白名单之外一律 404，无法越权触达后台。
+之所以现在能做（早期版本做不到）：飞牛 REST 的 authx 签名密钥已内置，
+且 `/v/api/v2|v1` 的登录接口可以用任意用户自己的账号密码校验，
+无需管理员 token —— 与 emby-pulse 用 `/Users/AuthenticateByName` 同理。
+校验在独立实例上发起，不影响后台持有的管理员登录态。
+
+三档鉴权（后台「系统设置 → 求片门户」切换）：
+
+| `portal_auth_mode` | 行为 | 提交人 |
+| --- | --- | --- |
+| `fn`（默认） | 必须登录飞牛影视账号 | 取自会话，标注「已验证」 |
+| `passcode` | 只需提交口令 `request_passcode` | 用户自报，标注「自报」 |
+| `none` | 完全开放 | 用户自报（仅内网/测试） |
 
 **2. 「入库闭环」靠直读媒体库比对，而非等 webhook。**
 
@@ -284,7 +291,9 @@ MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已�
 | `db_copy_ttl` | 快照有效期（秒），默认 60 |
 | `timezone_offset_hours` | 时区偏移，默认 8 |
 | `hidden_users` | 不参与统计的用户 guid 列表 |
-| `request_enabled` / `request_passcode` | 求片通道开关 / 提交口令 |
+| `request_enabled` | 求片通道开关 |
+| `portal_auth_mode` | 门户鉴权档位：`fn`（默认，飞牛账号登录）/ `passcode` / `none` |
+| `request_passcode` | `passcode` 档使用的提交口令 |
 | `search_source` | 求片选片搜索源：douban（默认）/ tmdb |
 | `mp_host` | MoviePilot 地址，如 `http://127.0.0.1:3000` |
 | `mp_username` / `mp_password` | MP 账号（OAuth2 表单登录换 access_token） |
@@ -319,9 +328,10 @@ fastapi 0.141.1 / starlette 1.7.0 / uvicorn 0.53.0 / jinja2 3.1.6
 
 ## 验证状态
 
-`tests/smoke.py` 覆盖 73 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
+`tests/smoke.py` 覆盖 86 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
 求片全链路（提交 / 校验 / 状态流转 / **入库闭环** / 豆瓣解析器 / 优雅降级）、
 **MoviePilot 对接**（未配置提示 / 载荷构造的中文枚举映射 / 配置回填）、
+**求片门户鉴权三档**（未登录拒绝 / 登录错误提示 / 口令校验 / 不泄露他人记录）、
 门户物理隔离断言、写操作与非法参数过滤。
 测试使用合成的 `trimmedia.db`（5 个媒体条目 / 82 条流水），不涉及任何真实用户数据，
 且 CI **不依赖豆瓣、TMDB 或 MoviePilot 可用性**（网络路径只做离线解析与载荷验证）。

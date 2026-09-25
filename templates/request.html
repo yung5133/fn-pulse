@@ -20,54 +20,80 @@
 
             <div id="msg"></div>
 
-            <label class="field">
-                <span>你的飞牛用户名</span>
-                <input type="text" id="requester" autocomplete="off" placeholder="例如：alice">
-            </label>
-
-            <div id="search_box"></div>
-            <label class="field" id="manual_title_wrap">
-                <span>想看的片名</span>
-                <input type="text" id="title" autocomplete="off" placeholder="例如：沙丘 2">
-            </label>
-
-            <div id="search_results" style="display:none;margin-bottom:14px">
-                <div class="faint" style="font-size:12px;margin-bottom:6px">从 TMDB 选择（点击选中）</div>
-                <div id="results_list" style="max-height:280px;overflow-y:auto"></div>
+            <!-- 登录闸门：auth_mode=fn 时必须先登录飞牛影视账号 -->
+            <div id="login_gate" style="display:none">
+                <label class="field">
+                    <span>飞牛影视账号</span>
+                    <input type="text" id="p_username" autocomplete="username"
+                           placeholder="你的飞牛影视用户名">
+                </label>
+                <label class="field">
+                    <span>密码</span>
+                    <input type="password" id="p_password" autocomplete="current-password">
+                </label>
+                <button id="btn_login" class="btn-primary"
+                        style="width:100%;justify-content:center">登 录</button>
+                <div class="faint" style="margin-top:10px;font-size:12px;text-align:center">
+                    使用你登录飞牛影视的账号，用于确认求片人身份
+                </div>
             </div>
 
-            <div style="display:flex;gap:10px">
-                <label class="field" style="flex:1">
-                    <span>类型</span>
-                    <select id="media_type">
-                        <option value="movie">电影</option>
-                        <option value="series">剧集</option>
-                        <option value="episode">单集</option>
-                    </select>
+            <!-- 已登录后的表单项 -->
+            <div id="main_form" style="display:none">
+                <div id="who" class="alert alert-info" style="display:none;font-size:12.5px"></div>
+
+                <label class="field" id="requester_wrap" style="display:none">
+                    <span>你的飞牛用户名</span>
+                    <input type="text" id="requester" autocomplete="off" placeholder="例如：alice">
                 </label>
-                <label class="field" style="width:96px" id="season_wrap">
-                    <span>季数</span>
-                    <input type="number" id="season" min="0" value="0">
+
+                <div id="search_box"></div>
+                <label class="field" id="manual_title_wrap">
+                    <span>想看的片名</span>
+                    <input type="text" id="title" autocomplete="off" placeholder="例如：沙丘 2">
                 </label>
-                <label class="field" style="width:110px">
-                    <span>年份</span>
-                    <input type="text" id="year" placeholder="2024">
+
+                <div id="search_results" style="display:none;margin-bottom:14px">
+                    <div class="faint" style="font-size:12px;margin-bottom:6px">从 TMDB 选择（点击选中）</div>
+                    <div id="results_list" style="max-height:280px;overflow-y:auto"></div>
+                </div>
+
+                <div style="display:flex;gap:10px">
+                    <label class="field" style="flex:1">
+                        <span>类型</span>
+                        <select id="media_type">
+                            <option value="movie">电影</option>
+                            <option value="series">剧集</option>
+                            <option value="episode">单集</option>
+                        </select>
+                    </label>
+                    <label class="field" style="width:96px" id="season_wrap">
+                        <span>季数</span>
+                        <input type="number" id="season" min="0" value="0">
+                    </label>
+                    <label class="field" style="width:110px">
+                        <span>年份</span>
+                        <input type="text" id="year" placeholder="2024">
+                    </label>
+                </div>
+
+                <label class="field">
+                    <span>备注（可不填）</span>
+                    <input type="text" id="note" placeholder="例如：要 4K 版本">
                 </label>
+
+                <label class="field" id="passcode_wrap" style="display:none">
+                    <span>提交口令</span>
+                    <input type="password" id="passcode" autocomplete="new-password">
+                </label>
+
+                <button id="submit" class="btn-primary" style="width:100%;justify-content:center">
+                    提交求片
+                </button>
+                <div style="margin-top:10px;text-align:center">
+                    <a href="#" id="btn_logout" class="faint" style="font-size:12px">退出登录</a>
+                </div>
             </div>
-
-            <label class="field">
-                <span>备注（可不填）</span>
-                <input type="text" id="note" placeholder="例如：要 4K 版本">
-            </label>
-
-            <label class="field" id="passcode_wrap" style="display:none">
-                <span>提交口令</span>
-                <input type="password" id="passcode" autocomplete="new-password">
-            </label>
-
-            <button id="submit" class="btn-primary" style="width:100%;justify-content:center">
-                提交求片
-            </button>
         </div>
 
         <div class="card">
@@ -84,21 +110,103 @@
 const $ = id => document.getElementById(id);
 
 function msg(cls, text) {
-    $('msg').innerHTML = `<div class="alert ${cls}">${text}</div>`;
+    $('msg').innerHTML = text ? `<div class="alert ${cls}">${text}</div>` : '';
 }
 
-// 读取门户配置：是否开放、是否需要口令
+/* ---- 门户鉴权闸门 ---- */
+let AUTH_MODE = 'fn';
+let CURRENT_USER = '';
+
+async function apiPost(url, body) {
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify(body || {})
+    });
+    return r.json();
+}
+
+function showGate() {
+    $('login_gate').style.display = 'block';
+    $('main_form').style.display = 'none';
+}
+
+function showForm(username) {
+    CURRENT_USER = username || '';
+    $('login_gate').style.display = 'none';
+    $('main_form').style.display = 'block';
+    const who = $('who');
+    if (CURRENT_USER) {
+        who.style.display = 'block';
+        who.innerHTML = `已登录：<b>${CURRENT_USER}</b>`;
+    } else {
+        who.style.display = 'none';
+    }
+    // 非 fn 档位仍需自报用户名
+    $('requester_wrap').style.display = AUTH_MODE === 'fn' ? 'none' : 'block';
+    buildSearchBox();
+}
+
+async function doPortalLogin() {
+    const u = $('p_username').value.trim();
+    const p = $('p_password').value;
+    if (!u || !p) return msg('alert-err', '请输入飞牛影视账号和密码');
+    $('btn_login').disabled = true;
+    try {
+        const b = await apiPost('/api/requests/portal_login', {username: u, password: p});
+        if (b.status === 'success') {
+            $('p_password').value = '';
+            msg('', '');
+            showForm(b.data.username);
+            loadMine();
+        } else {
+            msg('alert-err', b.message || '登录失败');
+        }
+    } catch (e) {
+        msg('alert-err', '登录请求失败：' + e.message);
+    } finally {
+        $('btn_login').disabled = false;
+    }
+}
+
+$('btn_login').onclick = doPortalLogin;
+$('p_password').addEventListener('keydown', e => { if (e.key === 'Enter') doPortalLogin(); });
+
+$('btn_logout').onclick = async (e) => {
+    e.preventDefault();
+    try { await apiPost('/api/requests/portal_logout'); } catch (_) { /* 忽略 */ }
+    CURRENT_USER = '';
+    $('mine').innerHTML = '<div class="empty">登录后可见</div>';
+    showGate();
+};
+
+// 读取门户配置：鉴权档位 / 是否开放 / 是否需要口令 / 搜索源
 fetch('/api/requests/config', {credentials: 'same-origin'})
     .then(r => r.json())
-    .then(b => {
+    .then(async b => {
         const d = b.data || {};
-        if (d.need_passcode) $('passcode_wrap').style.display = 'block';
+        AUTH_MODE = d.auth_mode || 'fn';
+        if (d.search_source) SEARCH_SOURCE = d.search_source;
         if (!d.enabled) {
             msg('alert-warn', '求片通道当前已关闭，请联系管理员。');
-            $('submit').disabled = true;
+            return;
         }
-        if (d.search_source) SEARCH_SOURCE = d.search_source;
-        buildSearchBox();
+        if (d.need_passcode) $('passcode_wrap').style.display = 'block';
+
+        if (AUTH_MODE === 'fn') {
+            if (d.logged_in) {
+                const me = await (await fetch('/api/requests/me',
+                                              {credentials: 'same-origin'})).json();
+                showForm((me.data || {}).username || '');
+                loadMine();
+            } else {
+                showGate();
+            }
+        } else {
+            showForm('');
+            loadMine();
+        }
     })
     .catch(() => {});
 
@@ -177,9 +285,10 @@ function pick(el) {
 }
 
 $('submit').onclick = async () => {
-    const requester = $('requester').value.trim();
+    // fn 档位由后台从会话取提交人，这里的值只是兜底提示
+    const requester = AUTH_MODE === 'fn' ? CURRENT_USER : $('requester').value.trim();
     const title = $('title').value.trim();
-    if (!requester) return msg('alert-err', '请填写你的飞牛用户名');
+    if (AUTH_MODE !== 'fn' && !requester) return msg('alert-err', '请填写你的飞牛用户名');
     if (!title) return msg('alert-err', '请填写想看的片名');
 
     try {
@@ -215,9 +324,11 @@ $('submit').onclick = async () => {
 };
 
 async function loadMine() {
-    const requester = $('requester').value.trim();
+    const requester = AUTH_MODE === 'fn' ? CURRENT_USER : $('requester').value.trim();
     if (!requester) {
-        $('mine').innerHTML = '<div class="empty">填入用户名后点击查询</div>';
+        $('mine').innerHTML = AUTH_MODE === 'fn'
+            ? '<div class="empty">登录后可见</div>'
+            : '<div class="empty">填入用户名后点击查询</div>';
         return;
     }
     try {

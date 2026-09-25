@@ -164,6 +164,10 @@ def main() -> int:
     # ---- 选片搜索：CI 不打外网，走确定性的降级路径 + 解析器单元测试 ----
     r = c.get("/api/requests/config").json()["data"]
     results.append(("搜索源默认为豆瓣", r.get("search_source") == "douban", str(r)))
+    results.append(("门户默认鉴权档位为 fn（需飞牛账号登录）",
+                    r.get("auth_mode") == "fn", str(r)))
+    # 后续批量用例走 none 档（等价于旧的自报行为），fn 档的守卫在末尾单独验证
+    c.post("/api/system/settings", json={"data": {"portal_auth_mode": "none"}})
 
     # 切到 TMDB 且无 Key：必须优雅降级（200 + 空结果 + 提示），而不是报错。
     # 注意要在登录态下改配置，否则 POST /api/system/settings 会 401 而不生效。
@@ -356,6 +360,43 @@ def main() -> int:
     for blocked in ("/", "/settings", "/users", "/api/stats/overview"):
         allowed = blocked in PORTAL_EXACT_PATHS or blocked.startswith(PORTAL_PREFIX_PATHS)
         results.append((f"隔离 {blocked} 不可达门户", not allowed, ""))
+
+    # ---- 求片门户鉴权三档 ----
+    # fn 档：未登录必须拒绝；登录接口在未配置飞牛地址时给出明确错误（不联网）
+    c.post("/api/system/settings", json={"data": {
+        "portal_auth_mode": "fn", "fn_host": "", "fn_username": "", "fn_password": ""}})
+    results.append(("fn 档 config 报告需登录",
+                    c.get("/api/requests/config").json()["data"]["auth_mode"] == "fn", ""))
+    me = c.get("/api/requests/me").json()["data"]
+    results.append(("fn 档未登录 /me 为未登录态", me.get("logged_in") is False, str(me)))
+    r = c.post("/api/requests/submit", json={"title": "未登录求片", "requester": "hacker"})
+    results.append(("fn 档未登录提交被拒（401）",
+                    r.status_code == 401, f"http={r.status_code} {r.text[:80]}"))
+    r = c.post("/api/requests/portal_login", json={"username": "alice", "password": "x"})
+    body = r.json()
+    results.append(("fn 档未配置飞牛地址时登录给出明确错误",
+                    r.status_code == 401 and "飞牛" in str(body.get("message")),
+                    f"http={r.status_code} {body.get('message')}"))
+    # 未登录时 /mine 不应泄露任何记录（后端强制以会话身份为准）
+    mine_anon = c.get("/api/requests/mine?requester=alice").json()["data"]
+    results.append(("fn 档未登录 /mine 不泄露他人记录", mine_anon == [], str(mine_anon)[:80]))
+
+    # passcode 档：口令校验
+    c.post("/api/system/settings", json={"data": {
+        "portal_auth_mode": "passcode", "request_passcode": "s3cret"}})
+    r = c.post("/api/requests/submit", json={
+        "title": "口令错误", "requester": "alice", "passcode": "wrong"})
+    results.append(("passcode 档口令错误被拒",
+                    r.json().get("status") == "error", r.text[:100]))
+    r = c.post("/api/requests/submit", json={
+        "title": "口令正确", "requester": "alice", "passcode": "s3cret"})
+    results.append(("passcode 档口令正确可提交且标记为自报",
+                    r.json().get("status") == "success"
+                    and r.json()["data"]["verified"] is False, r.text[:120]))
+
+    # 恢复默认档位，避免影响真实部署的认知
+    c.post("/api/system/settings", json={"data": {
+        "portal_auth_mode": "fn", "request_passcode": ""}})
 
     # ---- 结果 ----
     failed = [r for r in results if not r[1]]
