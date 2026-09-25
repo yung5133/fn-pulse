@@ -32,7 +32,7 @@ def _resolve_version() -> str:
                 return value
     except OSError:
         pass
-    return "0.3.10"
+    return "0.4.0"
 
 
 APP_VERSION = _resolve_version()

@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}风云榜 · FnPulse{% endblock %}
 
 {% block content %}
@@ -10,6 +12,7 @@
 <div class="card">
     <div id="alert"></div>
     <div class="toolbar">
+        <span class="toolbar-label">{{ icons.icon('trophy', 'ic-sm') }}排行</span>
         <select id="f_type">
             <option value="all">全部</option>
             <option value="movie">电影</option>
@@ -26,14 +29,14 @@
             <option value="50">Top 50</option>
             <option value="100">Top 100</option>
         </select>
-        <button id="btn_query" class="btn-primary btn-sm">查询</button>
+        <button id="btn_query" class="btn-primary btn-sm">{{ icons.icon('search', 'ic-sm') }}查询</button>
     </div>
 
     <div class="table-wrap">
         <table>
             <thead>
             <tr>
-                <th style="width:42px">#</th>
+                <th style="width:52px">#</th>
                 <th>影片</th>
                 <th>类型</th>
                 <th>上映</th>
@@ -42,7 +45,7 @@
                 <th>最后播放</th>
             </tr>
             </thead>
-            <tbody id="tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+            <tbody id="tbody">{{ ui.skel_rows(6, 7) }}</tbody>
         </table>
     </div>
 </div>
@@ -50,8 +53,6 @@
 
 {% block scripts %}
 <script>
-const MEDALS = ['🥇', '🥈', '🥉'];
-
 async function load() {
     const alertBox = document.getElementById('alert');
     alertBox.innerHTML = '';
@@ -73,14 +74,12 @@ async function load() {
         }
         tbody.innerHTML = rows.map((it, i) => `
             <tr>
-                <td class="num mono">${MEDALS[i] || (i + 1)}</td>
+                <td><span class="rank ${i < 3 ? 'rank-' + (i + 1) : ''}">${i + 1}</span></td>
                 <td>
-                    <div style="font-weight:550;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                        ${it.title}
-                    </div>
-                    <div class="faint" style="font-size:12px">${it.original_title || ''}</div>
+                    <div class="cell-title truncate" style="max-width:420px">${it.title}</div>
+                    <div class="cell-sub">${it.original_title || ''}</div>
                     ${it.season_number != null && it.episode_number != null
-                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(it.season_number).padStart(2,'0')}E${String(it.episode_number).padStart(2,'0')}</span>` : ''}
+                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(it.season_number).padStart(2, '0')}E${String(it.episode_number).padStart(2, '0')}</span>` : ''}
                 </td>
                 <td><span class="badge">${it.item_type || '—'}</span></td>
                 <td class="mono dim">${it.release_date || '—'}</td>

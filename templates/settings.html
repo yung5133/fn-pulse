@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}系统设置 · FnPulse{% endblock %}
 
 {% block content %}
@@ -11,14 +13,20 @@
 
 <div class="card" style="margin-bottom:16px">
     <div class="card-head">
-        <h2 class="card-title">数据源引擎</h2>
+        <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('bolt') }}</span>
+            <div>
+                <h2 class="card-title">数据源引擎</h2>
+                <p class="card-sub">双擎运行状态诊断</p>
+            </div>
+        </div>
+        <div class="head-actions">
+            <button id="btn_test" class="btn-sm">{{ icons.icon('shield', 'ic-sm') }}测试连接</button>
+            <button id="btn_refresh" class="btn-sm">{{ icons.icon('refresh', 'ic-sm') }}重建 SQLite 快照</button>
+        </div>
     </div>
-    <div id="engine"><div class="empty">检测中…</div></div>
-    <div style="margin-top:14px;display:flex;gap:8px">
-        <button id="btn_test" class="btn-sm">测试连接</button>
-        <button id="btn_refresh" class="btn-sm">重建 SQLite 快照</button>
-    </div>
-    <div class="faint" style="margin-top:10px;font-size:12.5px">
+    <div id="engine">{{ ui.skel(1, 96) }}</div>
+    <div class="faint" style="margin-top:12px;font-size:12.5px">
         快照机制说明：trimmedia.db 由飞牛影视服务持续持有，本项目先将其原子复制成副本再只读打开，
         副本默认有效期由「快照有效期」决定，到期后自动重建。数据看起来滞后时可手动重建。
     </div>
@@ -26,7 +34,15 @@
 
 <div class="grid grid-2">
     <div class="card">
-        <div class="card-head"><h2 class="card-title">SQLite 引擎（主数据源）</h2></div>
+        <div class="card-head">
+            <div class="cell-flex">
+                <span class="icon-chip chip-soft">{{ icons.icon('database') }}</span>
+                <div>
+                    <h2 class="card-title">SQLite 引擎（主数据源）</h2>
+                    <p class="card-sub">直读 trimmedia.db，播放流水的唯一完整来源</p>
+                </div>
+            </div>
+        </div>
         <label class="field">
             <span>trimmedia.db 路径</span>
             <input type="text" id="fn_db_path" placeholder="/fn-data/trimmedia.db">
@@ -49,7 +65,15 @@
     </div>
 
     <div class="card">
-        <div class="card-head"><h2 class="card-title">飞牛影视连接</h2></div>
+        <div class="card-head">
+            <div class="cell-flex">
+                <span class="icon-chip chip-soft">{{ icons.icon('external') }}</span>
+                <div>
+                    <h2 class="card-title">飞牛影视连接</h2>
+                    <p class="card-sub">REST 接口地址与管理员账号</p>
+                </div>
+            </div>
+        </div>
         <label class="field">
             <span>服务地址</span>
             <input type="text" id="fn_host" placeholder="http://127.0.0.1:5666">
@@ -70,7 +94,15 @@
 </div>
 
 <div class="card" style="margin-top:16px">
-    <div class="card-head"><h2 class="card-title">REST 签名密钥</h2></div>
+    <div class="card-head">
+        <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('shield') }}</span>
+            <div>
+                <h2 class="card-title">REST 签名密钥</h2>
+                <p class="card-sub">飞牛升级后签名失效时才需要改动</p>
+            </div>
+        </div>
+    </div>
     <div class="alert alert-info">
         两段签名密钥已<b>随项目内置</b>（来自官方 Web 客户端，逆向自 MoviePilot / bili-plan），
         通常<b>无需改动</b>。仅当飞牛影视升级后出现
@@ -91,15 +123,23 @@
 </div>
 
 <div class="card" style="margin-top:16px">
-    <div class="card-head"><h2 class="card-title">求片门户</h2></div>
+    <div class="card-head">
+        <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('inbox') }}</span>
+            <div>
+                <h2 class="card-title">求片门户</h2>
+                <p class="card-sub">独立端口运行，与管理后台物理隔离</p>
+            </div>
+        </div>
+    </div>
     <p class="faint" style="margin:0 0 12px;font-size:12.5px">
         门户运行在独立端口（默认 10208），与管理后台物理隔离。
         默认要求用户用<b>飞牛影视账号登录</b>后才能求片，提交人取自登录态、
         无法伪造成他人；需在「飞牛影视连接」里填好地址。
     </p>
-    <label class="field" style="display:flex;align-items:center;gap:8px">
+    <label class="field field-check">
         <input type="checkbox" id="request_enabled" style="width:auto">
-        <span style="margin:0">开放求片通道</span>
+        <span>开放求片通道</span>
     </label>
     <label class="field">
         <span>门户鉴权方式</span>
@@ -123,7 +163,18 @@
 </div>
 
 <div class="card" style="margin-top:16px">
-    <div class="card-head"><h2 class="card-title">MoviePilot 对接</h2></div>
+    <div class="card-head">
+        <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('download') }}</span>
+            <div>
+                <h2 class="card-title">MoviePilot 对接</h2>
+                <p class="card-sub">求片一键下发为 MP 订阅</p>
+            </div>
+        </div>
+        <div class="head-actions">
+            <button id="btn_mp_test" class="btn-sm">{{ icons.icon('shield', 'ic-sm') }}测试连接</button>
+        </div>
+    </div>
     <p class="faint" style="margin:0 0 12px;font-size:12.5px">
         求片可一键下发为 MoviePilot 订阅，由 MP 负责搜索下载整理；
         之后用求片管理页的「检测入库闭环」把状态推进到已入库。
@@ -150,11 +201,18 @@
             <input type="text" id="mp_token" autocomplete="off">
         </label>
     </div>
-    <button id="btn_mp_test" class="btn-sm">测试 MoviePilot 连接</button>
 </div>
 
 <div class="card" style="margin-top:16px">
-    <div class="card-head"><h2 class="card-title">管理员凭证</h2></div>
+    <div class="card-head">
+        <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('user') }}</span>
+            <div>
+                <h2 class="card-title">管理员凭证</h2>
+                <p class="card-sub">本地管理员账号与密码</p>
+            </div>
+        </div>
+    </div>
     <div class="grid grid-2">
         <label class="field">
             <span>账号</span>
@@ -167,9 +225,9 @@
     </div>
 </div>
 
-<div style="margin-top:16px;display:flex;gap:8px">
-    <button id="btn_save" class="btn-primary">保存设置</button>
-    <a href="/logout"><button>退出登录</button></a>
+<div class="action-bar">
+    <button id="btn_save" class="btn-primary">{{ icons.icon('check', 'ic-sm') }}保存设置</button>
+    <a href="/logout" class="btn btn-ghost">{{ icons.icon('logout', 'ic-sm') }}退出登录</a>
 </div>
 {% endblock %}
 
@@ -214,28 +272,34 @@ async function loadEngine() {
         const d = r.data;
         document.getElementById('engine').innerHTML = `
             <div class="grid grid-2">
-                <div style="padding:10px;border:1px solid var(--border);border-radius:9px">
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <b>SQLite 引擎</b>
+                <div class="engine-card">
+                    <div class="engine-card-head">
+                        <div class="cell-flex">
+                            <span class="list-icon">${icon('database')}</span>
+                            <b>SQLite 引擎</b>
+                        </div>
                         <span class="badge badge-${d.sqlite_ok ? 'ok' : 'err'}">
                             ${d.sqlite_ok ? '正常' : '不可用'}
                         </span>
                     </div>
-                    <div class="faint mono" style="font-size:11.5px;margin-top:6px">${d.sqlite_db_path}</div>
-                    <div class="faint" style="font-size:12px">
+                    <div class="engine-card-body mono">${d.sqlite_db_path}</div>
+                    <div class="engine-card-body">
                         ${d.sqlite_size_mb ?? '—'} MB · 源库修改于 ${d.sqlite_mtime || '—'}
                     </div>
-                    <div class="faint" style="font-size:12px">快照：${d.sqlite_snapshot_at || '—'}</div>
-                    ${d.sqlite_error ? `<div class="alert alert-err" style="margin:8px 0 0">${d.sqlite_error}</div>` : ''}
+                    <div class="engine-card-body">快照：${d.sqlite_snapshot_at || '—'}</div>
+                    ${d.sqlite_error ? `<div class="alert alert-err" style="margin:10px 0 0">${d.sqlite_error}</div>` : ''}
                 </div>
-                <div style="padding:10px;border:1px solid var(--border);border-radius:9px">
-                    <div style="display:flex;justify-content:space-between;align-items:center">
-                        <b>HTTP REST 引擎</b>
+                <div class="engine-card">
+                    <div class="engine-card-head">
+                        <div class="cell-flex">
+                            <span class="list-icon">${icon('external')}</span>
+                            <b>HTTP REST 引擎</b>
+                        </div>
                         <span class="badge badge-${d.http_ok ? 'ok' : 'warn'}">
                             ${d.http_ok ? '正常' : '未启用'}
                         </span>
                     </div>
-                    <div class="faint" style="font-size:12px;margin-top:6px">
+                    <div class="engine-card-body" style="margin-top:10px">
                         ${d.http_error || '可用于媒体库列表与扫描下发'}
                     </div>
                 </div>
@@ -276,6 +340,7 @@ async function save() {
             document.getElementById('admin_password').value = '';
         }
         msg('alert-ok', '设置已保存');
+        toast('设置已保存', 'ok');
         loadEngine();
     } catch (e) { msg('alert-err', e.message); }
 }

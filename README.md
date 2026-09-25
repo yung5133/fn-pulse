@@ -65,13 +65,13 @@ services:
 
 ### 版本号与镜像更新
 
-版本号以仓库根目录的 **`VERSION` 文件为唯一来源**（当前 `0.3.10`）。
+版本号以仓库根目录的 **`VERSION` 文件为唯一来源**（当前 `0.4.0`）。
 每次推送到 `main` 都会构建并打上两类 tag：
 
 | tag | 是否可变 | 用途 |
 | --- | --- | --- |
-| `0.3.10` | 可变（跟随 main） | 日常更新：`docker compose pull && up -d` |
-| `0.3.10-r12` | **不可变**（每次构建唯一） | 锁定与回滚 |
+| `0.4.0` | 可变（跟随 main） | 日常更新：`docker compose pull && up -d` |
+| `0.4.0-r12` | **不可变**（每次构建唯一） | 锁定与回滚 |
 | `latest` | 可变 | 与 main 同步 |
 | `v1.2.3` | 语义化 | 推 `v*` git tag 时产生 |
 | `sha-<短哈希>` | 不可变 | 对应具体提交 |
@@ -79,11 +79,11 @@ services:
 版本号同时作为构建参数注入容器，所以**界面显示的版本号与镜像 tag 永远一致**：
 
 ```bash
-docker pull ghcr.io/yung5133/fn-pulse:0.3.10        # 最新 0.3.10
-docker pull ghcr.io/yung5133/fn-pulse:0.3.10-r12    # 精确到某次构建
+docker pull ghcr.io/yung5133/fn-pulse:0.4.0        # 最新 0.4.0
+docker pull ghcr.io/yung5133/fn-pulse:0.4.0-r12    # 精确到某次构建
 ```
 
-发新版本：改 `VERSION` 文件（如 `0.3.10` → `0.4.0`）后推送即可。
+发新版本：改 `VERSION` 文件（如 `0.4.0` → `0.5.0`）后推送即可。
 
 ### 界面预览
 

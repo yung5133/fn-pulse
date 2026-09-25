@@ -10,12 +10,15 @@
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
 </head>
 <body>
+{% import "_icons.html" as icons %}
+{{ icons.sprite() }}
+
 {% block body %}
 <!-- 移动端顶栏 -->
 <div class="topbar">
     <div class="brand-mark">影</div>
     <div class="topbar-title">FnPulse</div>
-    <button class="nav-toggle" id="nav_toggle" aria-label="展开导航">☰</button>
+    <button class="nav-toggle" id="nav_toggle" aria-label="展开导航">{{ icons.icon('menu', 'ic-lg') }}</button>
 </div>
 
 <div class="sidebar-mask" id="sidebar_mask"></div>
@@ -36,14 +39,25 @@
             <div class="section-label">{{ item.group }}</div>
             {% endif %}
             <a class="nav-item {% if active == item.key %}active{% endif %}" href="{{ item.path }}">
-                <span class="nav-icon">{{ item.icon }}</span>{{ item.label }}
+                {{ icons.icon(item.icon, 'nav-icon') }}{{ item.label }}
             </a>
             {% endfor %}
         </nav>
 
         <div class="sidebar-foot">
-            <span class="badge badge-info">{{ engine_mode | default('sqlite') }}</span>
-            <div style="margin-top:8px">v{{ version }}</div>
+            <div class="sidebar-user">
+                <span class="avatar avatar-sm">{{ (user.name or '?')[:1] }}</span>
+                <div class="truncate">
+                    <div class="sidebar-user-name truncate">{{ user.name or '未登录' }}</div>
+                    <div class="sidebar-user-role">
+                        {{ '本地管理员' if user.source == 'local' else '飞牛账号' }}
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-meta">
+                <span class="badge badge-info">{{ engine_mode | default('sqlite') }}</span>
+                <span>v{{ version }}</span>
+            </div>
         </div>
     </aside>
 
@@ -52,6 +66,9 @@
     </main>
 </div>
 {% endblock %}
+
+<!-- 轻提示容器：由 window.toast() 动态填充 -->
+<div class="toast-stack" id="toast_stack" role="status" aria-live="polite"></div>
 
 <script>
 /* 统一 API 助手：401 自动跳登录，统一解包。 */
@@ -74,6 +91,31 @@ window.fmt = {
 window.cssVar = function (name, fallback) {
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback || '';
+};
+
+/* 图标助手：给 JS 动态渲染的表格 / 列表复用 sprite 中的图标 */
+window.icon = function (name, cls) {
+    return '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' +
+           '<use href="#i-' + name + '"></use></svg>';
+};
+
+/* 轻提示：右上角浮层，自动消失。text 走 textContent，不解析 HTML。 */
+window.toast = function (text, type) {
+    const stack = document.getElementById('toast_stack');
+    if (!stack) return;
+    const t = type || 'info';
+    const ICON = { ok: 'check', err: 'alert', warn: 'alert', info: 'info' };
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + t;
+    el.innerHTML = window.icon(ICON[t] || 'info');
+    const body = document.createElement('div');
+    body.textContent = text;
+    el.appendChild(body);
+    stack.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('leaving');
+        setTimeout(() => el.remove(), 200);
+    }, 3200);
 };
 
 /* 简易条形图兜底：CDN 不可用时用它替代 ECharts */

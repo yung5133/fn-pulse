@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}仪表盘 · FnPulse{% endblock %}
 
 {% block content %}
@@ -13,7 +15,7 @@
     <div class="card stat-card">
         <div class="stat-top">
             <div class="stat-label">媒体总量</div>
-            <div class="icon-chip">▤</div>
+            <div class="icon-chip">{{ icons.icon('film') }}</div>
         </div>
         <div class="stat-value" id="s_total">—</div>
         <div class="stat-foot" id="s_total_foot">—</div>
@@ -21,7 +23,7 @@
     <div class="card stat-card">
         <div class="stat-top">
             <div class="stat-label">累计播放次数</div>
-            <div class="icon-chip">▶</div>
+            <div class="icon-chip chip-sky">{{ icons.icon('play') }}</div>
         </div>
         <div class="stat-value" id="s_plays">—</div>
         <div class="stat-foot">今日 <span id="s_today">—</span> 次</div>
@@ -29,7 +31,7 @@
     <div class="card stat-card">
         <div class="stat-top">
             <div class="stat-label">累计观看时长</div>
-            <div class="icon-chip">◔</div>
+            <div class="icon-chip chip-green">{{ icons.icon('clock') }}</div>
         </div>
         <div class="stat-value" id="s_hours">—<span class="stat-unit">小时</span></div>
         <div class="stat-foot">统计口径为已播进度累计</div>
@@ -37,7 +39,7 @@
     <div class="card stat-card">
         <div class="stat-top">
             <div class="stat-label">活跃用户</div>
-            <div class="icon-chip">◍</div>
+            <div class="icon-chip chip-amber">{{ icons.icon('users') }}</div>
         </div>
         <div class="stat-value" id="s_users">—</div>
         <div class="stat-foot">最近播放 <span id="s_latest">—</span></div>
@@ -50,12 +52,10 @@
             <h2 class="card-title">播放趋势</h2>
             <p class="card-sub">按本地时区（UTC+8）按天聚合</p>
         </div>
-        <div class="toolbar" style="margin:0">
-            <select id="trend_days">
-                <option value="7">近 7 天</option>
-                <option value="30" selected>近 30 天</option>
-                <option value="90">近 90 天</option>
-            </select>
+        <div class="segmented" id="trend_range">
+            <button type="button" data-days="7">近 7 天</button>
+            <button type="button" data-days="30" class="active">近 30 天</button>
+            <button type="button" data-days="90">近 90 天</button>
         </div>
     </div>
     <div id="trend" class="chart-box"></div>
@@ -64,18 +64,22 @@
 <div class="grid grid-2">
     <div class="card">
         <div class="card-head">
-            <h2 class="card-title">用户活跃排行</h2>
-            <p class="card-sub" style="margin:0">按播放次数</p>
+            <div>
+                <h2 class="card-title">用户活跃排行</h2>
+                <p class="card-sub">按播放次数</p>
+            </div>
         </div>
-        <div id="users_box"><div class="empty">加载中…</div></div>
+        <div id="users_box">{{ ui.skel(6) }}</div>
     </div>
 
     <div class="card">
         <div class="card-head">
-            <h2 class="card-title">最近播放</h2>
-            <p class="card-sub" style="margin:0">最新 10 条流水</p>
+            <div>
+                <h2 class="card-title">最近播放</h2>
+                <p class="card-sub">最新 10 条流水</p>
+            </div>
         </div>
-        <div id="recent_box"><div class="empty">加载中…</div></div>
+        <div id="recent_box">{{ ui.skel(6) }}</div>
     </div>
 </div>
 {% endblock %}
@@ -109,10 +113,11 @@ async function loadOverview() {
 }
 
 let trendChart = null;
+let trendDays = 30;
+
 async function loadTrend() {
-    const days = document.getElementById('trend_days').value;
     try {
-        const r = await api('/api/stats/trend?days=' + days);
+        const r = await api('/api/stats/trend?days=' + trendDays);
         const rows = r.data;
         const box = document.getElementById('trend');
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
@@ -123,13 +128,22 @@ async function loadTrend() {
         }
         trendChart = trendChart || echarts.init(box);
         trendChart.setOption({
-            grid: { left: 44, right: 20, top: 20, bottom: 30 },
+            grid: { left: 46, right: 22, top: 26, bottom: 30 },
             tooltip: { trigger: 'axis' },
             legend: { data: ['播放次数', '观看时长'], top: 0, right: 0, itemWidth: 12, itemHeight: 8 },
-            xAxis: { type: 'category', data: rows.map(r => r.date.slice(5)), axisLine: { lineStyle: { color: cssVar('--border') } } },
+            xAxis: {
+                type: 'category',
+                data: rows.map(r => r.date.slice(5)),
+                axisLine: { lineStyle: { color: cssVar('--border') } },
+                axisLabel: { color: cssVar('--text-faint') }
+            },
             yAxis: [
-                { type: 'value', name: '次', splitLine: { lineStyle: { color: cssVar('--line-soft') } } },
-                { type: 'value', name: '小时', splitLine: { show: false } }
+                {
+                    type: 'value', name: '次',
+                    axisLabel: { color: cssVar('--text-faint') },
+                    splitLine: { lineStyle: { color: cssVar('--line-soft') } }
+                },
+                { type: 'value', name: '小时', axisLabel: { color: cssVar('--text-faint') }, splitLine: { show: false } }
             ],
             series: [
                 {
@@ -154,12 +168,13 @@ async function loadActivity() {
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
         const max = Math.max(...rows.map(u => u.plays));
         box.innerHTML = rows.map(u => `
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
-                <span style="width:88px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.username}</span>
+            <div class="bar-row">
+                <div class="bar-row-label">
+                    <span class="avatar avatar-sm">${(u.username || '?').slice(0, 1)}</span>
+                    <span class="bar-row-name" title="${u.username}">${u.username}</span>
+                </div>
                 <span class="bar" style="flex:1"><i style="width:${Math.round(u.plays / max * 100)}%"></i></span>
-                <span style="width:112px;text-align:right;font-size:12.5px;color:var(--text-dim)">
-                    ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)}
-                </span>
+                <span class="bar-row-value">${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)}</span>
             </div>`).join('');
     } catch (e) { document.getElementById('users_box').innerHTML = '<div class="empty">加载失败</div>'; }
 }
@@ -172,13 +187,22 @@ async function loadRecent() {
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无数据</div>'; return; }
         box.innerHTML = rows.map(p => `
             <div class="list-row">
-                <div class="list-main" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                    ${p.title}
-                    ${p.season_number != null && p.episode_number != null
-                        ? `<span class="faint" style="font-weight:400"> S${String(p.season_number).padStart(2,'0')}E${String(p.episode_number).padStart(2,'0')}</span>` : ''}
-                </div>
-                <div class="faint" style="font-size:12px">
-                    ${p.username} · ${p.update_time} · 进度 ${p.progress}%
+                <div class="cell-flex">
+                    <span class="list-icon">${icon('play')}</span>
+                    <div class="list-body">
+                        <div class="list-row-head">
+                            <div class="list-main truncate">
+                                ${p.title}${p.season_number != null && p.episode_number != null
+                                    ? `<span class="faint" style="font-weight:400"> S${String(p.season_number).padStart(2, '0')}E${String(p.episode_number).padStart(2, '0')}</span>`
+                                    : ''}
+                            </div>
+                            <span class="faint" style="font-size:12px;white-space:nowrap">${p.update_time}</span>
+                        </div>
+                        <div class="list-meta">
+                            ${p.username} · 进度 ${p.progress}%
+                        </div>
+                        <div class="bar" style="margin-top:6px"><i style="width:${p.progress}%"></i></div>
+                    </div>
                 </div>
             </div>`).join('');
     } catch (e) { document.getElementById('recent_box').innerHTML = '<div class="empty">加载失败</div>'; }
@@ -195,7 +219,14 @@ async function loadEngine() {
     } catch (e) {}
 }
 
-document.getElementById('trend_days').onchange = loadTrend;
+document.querySelectorAll('#trend_range button').forEach(btn => {
+    btn.onclick = () => {
+        trendDays = btn.dataset.days;
+        document.querySelectorAll('#trend_range button')
+            .forEach(x => x.classList.toggle('active', x === btn));
+        loadTrend();
+    };
+});
 window.addEventListener('resize', () => { if (trendChart) trendChart.resize(); });
 window.addEventListener('load', () => {
     loadEngine(); loadOverview(); loadTrend(); loadActivity(); loadRecent();

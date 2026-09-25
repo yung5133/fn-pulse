@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}数据洞察 · FnPulse{% endblock %}
 
 {% block content %}
@@ -16,6 +18,7 @@
                 <h2 class="card-title">作息分布</h2>
                 <p class="card-sub">按本地时区逐小时统计播放次数</p>
             </div>
+            <div class="icon-chip chip-sky">{{ icons.icon('clock') }}</div>
         </div>
         <div id="hours_chart" class="chart-box"></div>
     </div>
@@ -26,6 +29,7 @@
                 <h2 class="card-title">画质结构</h2>
                 <p class="card-sub">按播放时的分辨率记录统计</p>
             </div>
+            <div class="icon-chip chip-green">{{ icons.icon('image') }}</div>
         </div>
         <div id="quality_chart" class="chart-box"></div>
     </div>
@@ -33,10 +37,12 @@
 
 <div class="card">
     <div class="card-head">
-        <h2 class="card-title">用户画像</h2>
-        <p class="card-sub" style="margin:0">依据播放行为生成</p>
+        <div>
+            <h2 class="card-title">用户画像</h2>
+            <p class="card-sub">依据播放行为生成</p>
+        </div>
     </div>
-    <div id="profiles"><div class="empty">加载中…</div></div>
+    <div id="profiles">{{ ui.skel(4) }}</div>
 </div>
 {% endblock %}
 
@@ -45,6 +51,16 @@
 function showAlert(e) {
     document.getElementById('alert').innerHTML =
         `<div class="alert alert-err">${e.message}</div>`;
+}
+
+const charts = [];
+
+function renderChart(el, option) {
+    if (typeof echarts === 'undefined') return false;
+    const inst = echarts.init(el);
+    inst.setOption(option);
+    charts.push(inst);
+    return true;
 }
 
 async function loadHours() {
@@ -57,11 +73,20 @@ async function loadHours() {
             fallbackBars(box, rows.filter(x => x.plays > 0), 'hour', 'plays', ' 次');
             return;
         }
-        echarts.init(box).setOption({
-            grid: { left: 44, right: 16, top: 16, bottom: 30 },
+        renderChart(box, {
+            grid: { left: 46, right: 18, top: 18, bottom: 30 },
             tooltip: { trigger: 'axis' },
-            xAxis: { type: 'category', data: rows.map(r => String(r.hour).padStart(2, '0') + '时') },
-            yAxis: { type: 'value', splitLine: { lineStyle: { color: cssVar('--line-soft') } } },
+            xAxis: {
+                type: 'category',
+                data: rows.map(r => String(r.hour).padStart(2, '0') + '时'),
+                axisLine: { lineStyle: { color: cssVar('--border') } },
+                axisLabel: { color: cssVar('--text-faint') }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { color: cssVar('--text-faint') },
+                splitLine: { lineStyle: { color: cssVar('--line-soft') } }
+            },
             series: [{
                 type: 'bar', data: rows.map(r => r.plays), barMaxWidth: 18,
                 itemStyle: { color: cssVar('--accent'), borderRadius: [3, 3, 0, 0] }
@@ -80,12 +105,13 @@ async function loadQuality() {
             fallbackBars(box, dist, 'resolution', 'plays', ' 次');
             return;
         }
-        echarts.init(box).setOption({
+        renderChart(box, {
             tooltip: { trigger: 'item', formatter: '{b}: {c} 次 ({d}%)' },
             series: [{
-                type: 'pie', radius: ['42%', '70%'], center: ['50%', '50%'],
+                type: 'pie', radius: ['44%', '72%'], center: ['50%', '50%'],
                 data: dist.map(d => ({ name: d.resolution, value: d.plays })),
-                label: { fontSize: 11 }
+                label: { fontSize: 11, color: cssVar('--text-dim') },
+                itemStyle: { borderColor: cssVar('--surface'), borderWidth: 2 }
             }]
         });
     } catch (e) { showAlert(e); }
@@ -108,23 +134,29 @@ async function loadProfiles() {
                         expired ? '已过期' : '剩 ' + u.days_left + ' 天'}</span>`
                 : '<span class="faint">—</span>';
             return `
-            <div style="border:1px solid var(--border);border-radius:10px;padding:12px">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-                    <b style="font-size:14px">${u.username}</b>
-                    ${u.is_admin ? '<span class="badge badge-info">管理员</span>' : ''}
+            <div class="engine-card">
+                <div class="cell-flex">
+                    <span class="avatar avatar-lg">${(u.username || '?').slice(0, 1)}</span>
+                    <div class="list-body">
+                        <div class="list-row-head">
+                            <b style="font-size:14px">${u.username}</b>
+                            ${u.is_admin ? '<span class="badge badge-info">管理员</span>' : ''}
+                        </div>
+                        <div class="dim" style="margin-top:3px;font-size:12.5px;font-variant-numeric:tabular-nums">
+                            ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)} · 最近 ${u.last_play || '—'}
+                        </div>
+                    </div>
                 </div>
-                <div class="dim" style="margin:6px 0 8px;font-size:12.5px;font-variant-numeric:tabular-nums">
-                    ${fmt.n(u.plays)} 次 · ${fmt.hours(u.hours)} · 最近 ${u.last_play || '—'}
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
                     ${badges}${expire}
                 </div>
-                ${u.note ? `<div class="faint" style="margin-top:7px;font-size:12px">备注：${u.note}</div>` : ''}
+                ${u.note ? `<div class="faint" style="margin-top:8px;font-size:12px">备注：${u.note}</div>` : ''}
             </div>`;
         }).join('') + '</div>';
     } catch (e) { showAlert(e); }
 }
 
+window.addEventListener('resize', () => charts.forEach(c => c.resize()));
 window.addEventListener('load', () => { loadHours(); loadQuality(); loadProfiles(); });
 </script>
 {% endblock %}

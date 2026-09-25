@@ -1,0 +1,33 @@
+{# ==========================================================================
+   FnPulse · 通用 UI 宏
+   --------------------------------------------------------------------------
+   用法：
+       {% import "_ui.html" as ui %}
+       {{ ui.skel(6) }}                    <!-- 骨架屏占位 -->
+       {{ ui.avatar('alice') }}            <!-- 首字头像 -->
+       {{ ui.avatar('alice', 'avatar-lg') }}
+   ========================================================================== #}
+
+
+{# 骨架屏占位：n = 行数，h = 每行高度(px) #}
+{% macro skel(n=4, h=44) -%}
+<div class="skeleton-lines">
+{%- for _ in range(n) %}
+<div class="skeleton" style="height: {{ h }}px"></div>
+{%- endfor %}
+</div>
+{%- endmacro %}
+
+
+{# 表格骨架行：n = 行数，cols = 跨列数 #}
+{% macro skel_rows(n=5, cols=6) -%}
+{%- for _ in range(n) %}
+<tr><td colspan="{{ cols }}"><div class="skeleton" style="height: 22px"></div></td></tr>
+{%- endfor %}
+{%- endmacro %}
+
+
+{# 首字头像：取用户名首字符，空值兜底为 ? #}
+{% macro avatar(name, cls='') -%}
+<span class="avatar{% if cls %} {{ cls }}{% endif %}">{{ (name or '?')[:1] }}</span>
+{%- endmacro %}

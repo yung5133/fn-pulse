@@ -19,15 +19,16 @@ PKG_STATIC = os.path.join(BASE_DIR, "static")
 PKG_TEMPLATES = os.path.join(BASE_DIR, "templates")
 templates = Jinja2Templates(directory=PKG_TEMPLATES)
 
+# icon 为 templates/_icons.html 中的图标名（不再是字符字形）
 NAV = [
-    {"key": "dashboard", "path": "/", "label": "仪表盘", "icon": "◧", "group": "总览"},
-    {"key": "history", "path": "/history", "label": "播放历史", "icon": "▤", "group": "总览"},
-    {"key": "content", "path": "/content", "label": "风云榜", "icon": "★", "group": "总览"},
-    {"key": "users", "path": "/users", "label": "用户中心", "icon": "◍", "group": "洞察"},
-    {"key": "insight", "path": "/insight", "label": "数据洞察", "icon": "◉", "group": "洞察"},
-    {"key": "library", "path": "/library", "label": "媒体库", "icon": "▒", "group": "管理"},
-    {"key": "requests", "path": "/requests_admin", "label": "求片管理", "icon": "◆", "group": "管理"},
-    {"key": "settings", "path": "/settings", "label": "系统设置", "icon": "⚙", "group": "管理"},
+    {"key": "dashboard", "path": "/", "label": "仪表盘", "icon": "dashboard", "group": "总览"},
+    {"key": "history", "path": "/history", "label": "播放历史", "icon": "history", "group": "总览"},
+    {"key": "content", "path": "/content", "label": "风云榜", "icon": "trophy", "group": "总览"},
+    {"key": "users", "path": "/users", "label": "用户中心", "icon": "users", "group": "洞察"},
+    {"key": "insight", "path": "/insight", "label": "数据洞察", "icon": "insight", "group": "洞察"},
+    {"key": "library", "path": "/library", "label": "媒体库", "icon": "library", "group": "管理"},
+    {"key": "requests", "path": "/requests_admin", "label": "求片管理", "icon": "inbox", "group": "管理"},
+    {"key": "settings", "path": "/settings", "label": "系统设置", "icon": "settings", "group": "管理"},
 ]
 
 

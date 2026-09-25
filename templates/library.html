@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}媒体库 · FnPulse{% endblock %}
 
 {% block content %}
@@ -16,9 +18,9 @@
                 <h2 class="card-title">媒体库列表</h2>
                 <p class="card-sub">来源 /v/api/v1/mdb/list</p>
             </div>
-            <button id="btn_reload" class="btn-sm">刷新</button>
+            <button id="btn_reload" class="btn-sm">{{ icons.icon('refresh', 'ic-sm') }}刷新</button>
         </div>
-        <div id="libs"><div class="empty">加载中…</div></div>
+        <div id="libs">{{ ui.skel(4, 52) }}</div>
     </div>
 
     <div class="card">
@@ -27,16 +29,19 @@
                 <h2 class="card-title">扫描任务记录</h2>
                 <p class="card-sub">仅记录本面板下发过的指令</p>
             </div>
-            <button id="btn_tasks" class="btn-sm">刷新</button>
+            <button id="btn_tasks" class="btn-sm">{{ icons.icon('refresh', 'ic-sm') }}刷新</button>
         </div>
-        <div id="tasks"><div class="empty">加载中…</div></div>
+        <div id="tasks">{{ ui.skel(4, 52) }}</div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-async function scan(guid, name) {
+async function scan(btn, guid, name) {
+    const original = btn.innerHTML;
+    btn.classList.add('loading');
+    btn.disabled = true;
     try {
         const r = await api('/api/library/scan', {
             method: 'POST',
@@ -45,10 +50,15 @@ async function scan(guid, name) {
         });
         document.getElementById('alert').innerHTML =
             `<div class="alert alert-${r.data.ok ? 'ok' : 'err'}">${r.message}</div>`;
+        toast(r.message, r.data.ok ? 'ok' : 'err');
         loadTasks();
     } catch (e) {
         document.getElementById('alert').innerHTML =
             `<div class="alert alert-err">${e.message}</div>`;
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+        btn.innerHTML = original;
     }
 }
 
@@ -64,20 +74,22 @@ async function loadLibs() {
         if (!rows.length) { box.innerHTML = '<div class="empty">没有读取到媒体库</div>'; return; }
 
         box.innerHTML = rows.map(l => `
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;
-                        padding:10px 0;border-bottom:1px solid #f1f5f9">
-                <div style="min-width:0">
-                    <div style="font-weight:550">${l.name || '(未命名)'}</div>
-                    <div class="faint mono" style="font-size:11px">${l.guid || ''}</div>
+            <div class="list-row">
+                <div class="cell-flex">
+                    <span class="list-icon">${icon('library')}</span>
+                    <div class="list-body">
+                        <div class="cell-title truncate">${l.name || '(未命名)'}</div>
+                        <div class="faint mono" style="font-size:11px">${l.guid || ''}</div>
+                    </div>
+                    <button class="btn-sm" data-guid="${l.guid}" data-name="${(l.name || '').replace(/"/g, '&quot;')}">
+                        ${icon('refresh', 'ic-sm')}触发扫描
+                    </button>
                 </div>
-                <button class="btn-sm" data-guid="${l.guid}" data-name="${(l.name || '').replace(/"/g, '&quot;')}">
-                    触发扫描
-                </button>
             </div>`).join('');
 
         // 用事件委托绑定，避免片名中的引号破坏内联 onclick
         box.querySelectorAll('button[data-guid]').forEach(btn => {
-            btn.onclick = () => scan(btn.dataset.guid, btn.dataset.name);
+            btn.onclick = () => scan(btn, btn.dataset.guid, btn.dataset.name);
         });
     } catch (e) {
         document.getElementById('alert').innerHTML =
@@ -93,7 +105,7 @@ async function loadTasks() {
         if (!rows.length) { box.innerHTML = '<div class="empty">暂无记录</div>'; return; }
         box.innerHTML = rows.map(t => `
             <div class="list-row">
-                <div style="display:flex;justify-content:space-between;gap:8px">
+                <div class="list-row-head">
                     <b>${t.library_name || t.library_guid}</b>
                     <span class="badge badge-${t.status === 'success' ? 'ok' : 'err'}">
                         ${t.status === 'success' ? '成功' : '失败'}

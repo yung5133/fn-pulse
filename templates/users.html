@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}用户中心 · FnPulse{% endblock %}
 
 {% block content %}
@@ -25,31 +27,34 @@
                 <th>最后登录</th>
                 <th>备注</th>
                 <th>计入统计</th>
-                <th style="width:80px"></th>
+                <th style="width:88px"></th>
             </tr>
             </thead>
-            <tbody id="tbody"><tr><td colspan="9" class="empty">加载中…</td></tr></tbody>
+            <tbody id="tbody">{{ ui.skel_rows(5, 9) }}</tbody>
         </table>
     </div>
 </div>
 
 <!-- 编辑弹窗 -->
-<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
-     align-items:center;justify-content:center;z-index:50">
-    <div class="card" style="width:400px;max-width:calc(100vw - 32px)">
+<div id="modal" class="modal-mask">
+    <div class="modal">
         <h2 class="card-title" id="modal_title">编辑用户</h2>
         <div id="modal_msg"></div>
         <input type="hidden" id="m_guid">
         <input type="hidden" id="m_username">
-        <label class="field"><span>备注</span><input type="text" id="m_note" placeholder="例如：朋友账号"></label>
-        <label class="field"><span>到期日期</span><input type="date" id="m_expire"></label>
-        <label class="field" style="display:flex;align-items:center;gap:8px">
-            <input type="checkbox" id="m_hidden" style="width:auto">
-            <span style="margin:0">从统计中隐藏</span>
+        <label class="field"><span>备注</span>
+            <input type="text" id="m_note" placeholder="例如：朋友账号">
         </label>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <label class="field"><span>到期日期</span>
+            <input type="date" id="m_expire">
+        </label>
+        <label class="field field-check">
+            <input type="checkbox" id="m_hidden" style="width:auto">
+            <span>从统计中隐藏</span>
+        </label>
+        <div class="modal-actions">
             <button onclick="closeModal()">取消</button>
-            <button class="btn-primary" onclick="saveMeta()">保存</button>
+            <button class="btn-primary" onclick="saveMeta()">{{ icons.icon('check', 'ic-sm') }}保存</button>
         </div>
     </div>
 </div>
@@ -67,9 +72,9 @@ function openModal(u) {
     document.getElementById('m_hidden').checked = !!u.is_hidden;
     document.getElementById('modal_title').textContent = '编辑：' + u.username;
     document.getElementById('modal_msg').innerHTML = '';
-    modal.style.display = 'flex';
+    modal.classList.add('open');
 }
-function closeModal() { modal.style.display = 'none'; }
+function closeModal() { modal.classList.remove('open'); }
 
 async function saveMeta() {
     try {
@@ -86,6 +91,7 @@ async function saveMeta() {
         });
         closeModal();
         load();
+        toast('用户设置已保存', 'ok');
     } catch (e) {
         document.getElementById('modal_msg').innerHTML =
             `<div class="alert alert-err">${e.message}</div>`;
@@ -104,8 +110,13 @@ async function load() {
         tbody.innerHTML = rows.map(u => `
             <tr>
                 <td>
-                    <div style="font-weight:550">${u.username}</div>
-                    <div class="faint mono" style="font-size:11px">${u.guid.slice(0, 12)}…</div>
+                    <div class="cell-flex">
+                        <span class="avatar avatar-sm">${(u.username || '?').slice(0, 1)}</span>
+                        <div style="min-width:0">
+                            <div class="cell-title">${u.username}</div>
+                            <div class="faint mono" style="font-size:11px">${u.guid.slice(0, 12)}…</div>
+                        </div>
+                    </div>
                 </td>
                 <td>
                     ${u.is_admin ? '<span class="badge badge-info">管理员</span>' : '<span class="badge">普通</span>'}
@@ -122,7 +133,9 @@ async function load() {
                         : '<span class="badge badge-ok">计入</span>'}
                 </td>
                 <td class="row-actions">
-                    <button class="btn-sm" onclick='openModal(${JSON.stringify(u)})'>编辑</button>
+                    <button class="btn-sm" onclick='openModal(${JSON.stringify(u)})'>
+                        ${icon('edit', 'ic-sm')}编辑
+                    </button>
                 </td>
             </tr>`).join('');
     } catch (e) {

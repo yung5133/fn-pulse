@@ -1,4 +1,6 @@
 {% extends "layout.html" %}
+{% import "_icons.html" as icons %}
+{% import "_ui.html" as ui %}
 {% block title %}播放历史 · FnPulse{% endblock %}
 
 {% block content %}
@@ -10,8 +12,12 @@
 <div class="card">
     <div id="alert"></div>
     <div class="toolbar">
+        <span class="toolbar-label">{{ icons.icon('filter', 'ic-sm') }}筛选</span>
         <select id="f_user"><option value="">所有用户</option></select>
-        <input type="text" id="f_search" placeholder="搜索片名…">
+        <span class="input-icon">
+            {{ icons.icon('search') }}
+            <input type="text" id="f_search" placeholder="搜索片名…">
+        </span>
         <select id="f_range">
             <option value="">全部时间</option>
             <option value="today">今天</option>
@@ -24,7 +30,7 @@
             <option value="50">每页 50 条</option>
             <option value="100">每页 100 条</option>
         </select>
-        <button id="btn_query" class="btn-primary btn-sm">查询</button>
+        <button id="btn_query" class="btn-primary btn-sm">{{ icons.icon('search', 'ic-sm') }}查询</button>
     </div>
 
     <div class="table-wrap">
@@ -40,14 +46,14 @@
                 <th>最后播放</th>
             </tr>
             </thead>
-            <tbody id="tbody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+            <tbody id="tbody">{{ ui.skel_rows(6, 7) }}</tbody>
         </table>
     </div>
 
     <div class="pager">
-        <button id="prev" class="btn-sm">上一页</button>
+        <button id="prev" class="btn-sm">{{ icons.icon('chevron-left', 'ic-sm') }}上一页</button>
         <span id="page_info" class="dim">—</span>
-        <button id="next" class="btn-sm">下一页</button>
+        <button id="next" class="btn-sm">下一页{{ icons.icon('chevron-right', 'ic-sm') }}</button>
     </div>
 </div>
 {% endblock %}
@@ -92,18 +98,23 @@ async function load() {
         tbody.innerHTML = rows.map(p => `
             <tr>
                 <td>
-                    <div style="font-weight:550;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                    <div class="cell-title truncate" style="max-width:340px"
                          title="${(p.original_title || '').replace(/"/g, '&quot;')}">
                         ${p.title}
                     </div>
                     ${p.season_number != null && p.episode_number != null
-                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(p.season_number).padStart(2,'0')}E${String(p.episode_number).padStart(2,'0')}</span>` : ''}
+                        ? `<span class="badge badge-info" style="margin-top:3px">S${String(p.season_number).padStart(2, '0')}E${String(p.episode_number).padStart(2, '0')}</span>` : ''}
                 </td>
-                <td>${p.username}</td>
+                <td>
+                    <div class="cell-flex">
+                        <span class="avatar avatar-sm">${(p.username || '?').slice(0, 1)}</span>
+                        <span>${p.username}</span>
+                    </div>
+                </td>
                 <td><span class="badge">${p.item_type || '—'}</span></td>
                 <td>${p.resolution ? `<span class="badge">${p.resolution}</span>` : '<span class="faint">—</span>'}</td>
                 <td>
-                    <div style="display:flex;align-items:center;gap:7px">
+                    <div class="bar-cell">
                         <span class="bar" style="width:60px"><i style="width:${p.progress}%"></i></span>
                         <span class="faint" style="font-size:12px">${p.progress}%</span>
                     </div>
