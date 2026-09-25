@@ -15,3 +15,6 @@ static/img/*.psd
 # WorkBuddy 项目工作数据，非交付内容
 .workbuddy/
 .DS_Store
+
+# 临时提交说明文件
+.commitmsg.txt

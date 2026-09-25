@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.core.config import APP_VERSION, PORT, cfg
+from app.core.config import APP_VERSION, PORT, USER_PORT, cfg
 from app.routers.auth import current_user
 
 router = APIRouter()
@@ -26,6 +26,7 @@ NAV = [
     {"key": "users", "path": "/users", "label": "用户中心", "icon": "◍"},
     {"key": "insight", "path": "/insight", "label": "数据洞察", "icon": "◉"},
     {"key": "library", "path": "/library", "label": "媒体库", "icon": "▒"},
+    {"key": "requests", "path": "/requests_admin", "label": "求片管理", "icon": "◆"},
     {"key": "settings", "path": "/settings", "label": "系统设置", "icon": "⚙"},
 ]
 
@@ -101,3 +102,21 @@ async def library_page(request: Request):
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     return _render(request, "settings.html", "settings")
+
+
+@router.get("/request", response_class=HTMLResponse)
+async def request_portal_page(request: Request):
+    """
+    用户求片门户页。刻意不校验管理员登录 —— 它主要运行在隔离端口 10208 上，
+    由 main.py 的 portal_app 白名单负责边界。
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="request.html",
+        context={"request": request, "version": APP_VERSION, "port": USER_PORT},
+    )
+
+
+@router.get("/requests_admin", response_class=HTMLResponse)
+async def requests_admin_page(request: Request):
+    return _render(request, "requests_admin.html", "requests")

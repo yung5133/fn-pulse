@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>点片箱 · FnPulse 飞牛映迹</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="login-wrap">
+    <div style="width:520px;max-width:calc(100vw - 32px)">
+        <div class="card" style="margin-bottom:16px">
+            <div class="card-head" style="flex-direction:column;align-items:center;gap:6px">
+                <div class="brand-mark" style="width:36px;height:36px;font-size:17px">影</div>
+                <div style="text-align:center">
+                    <div style="font-size:17px;font-weight:700">点片箱</div>
+                    <div class="faint" style="font-size:12px">想看什么？告诉我们</div>
+                </div>
+            </div>
+
+            <div id="msg"></div>
+
+            <label class="field">
+                <span>你的飞牛用户名</span>
+                <input type="text" id="requester" autocomplete="off" placeholder="例如：alice">
+            </label>
+
+            <div id="search_box"></div>
+            <label class="field" id="manual_title_wrap">
+                <span>想看的片名</span>
+                <input type="text" id="title" autocomplete="off" placeholder="例如：沙丘 2">
+            </label>
+
+            <div id="search_results" style="display:none;margin-bottom:14px">
+                <div class="faint" style="font-size:12px;margin-bottom:6px">从 TMDB 选择（点击选中）</div>
+                <div id="results_list" style="max-height:280px;overflow-y:auto"></div>
+            </div>
+
+            <div style="display:flex;gap:10px">
+                <label class="field" style="flex:1">
+                    <span>类型</span>
+                    <select id="media_type">
+                        <option value="movie">电影</option>
+                        <option value="series">剧集</option>
+                        <option value="episode">单集</option>
+                    </select>
+                </label>
+                <label class="field" style="width:96px" id="season_wrap">
+                    <span>季数</span>
+                    <input type="number" id="season" min="0" value="0">
+                </label>
+                <label class="field" style="width:110px">
+                    <span>年份</span>
+                    <input type="text" id="year" placeholder="2024">
+                </label>
+            </div>
+
+            <label class="field">
+                <span>备注（可不填）</span>
+                <input type="text" id="note" placeholder="例如：要 4K 版本">
+            </label>
+
+            <label class="field" id="passcode_wrap" style="display:none">
+                <span>提交口令</span>
+                <input type="password" id="passcode" autocomplete="new-password">
+            </label>
+
+            <button id="submit" class="btn-primary" style="width:100%;justify-content:center">
+                提交求片
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <h2 class="card-title">我提交过的</h2>
+                <button id="btn_mine" class="btn-sm">查询</button>
+            </div>
+            <div id="mine"><div class="empty">填入用户名后点击查询</div></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function msg(cls, text) {
+    $('msg').innerHTML = `<div class="alert ${cls}">${text}</div>`;
+}
+
+// 读取门户配置：是否开放、是否需要口令
+fetch('/api/requests/config', {credentials: 'same-origin'})
+    .then(r => r.json())
+    .then(b => {
+        const d = b.data || {};
+        if (d.need_passcode) $('passcode_wrap').style.display = 'block';
+        if (!d.enabled) {
+            msg('alert-warn', '求片通道当前已关闭，请联系管理员。');
+            $('submit').disabled = true;
+        }
+        if (d.tmdb_enabled) buildSearchBox();
+    })
+    .catch(() => {});
+
+$('media_type').onchange = () => {
+    $('season_wrap').style.display = $('media_type').value === 'movie' ? 'none' : 'block';
+};
+$('media_type').dispatchEvent(new Event('change'));
+
+/* ---- TMDB 搜索（未配置 Key 时自动隐藏，手填片名始终可用） ---- */
+let selected = null;
+
+function buildSearchBox() {
+    $('search_box').innerHTML = `
+        <label class="field" style="display:flex;gap:8px">
+            <input type="text" id="search_q" placeholder="搜索 TMDB，从海报墙选片"
+                   style="flex:1" autocomplete="off">
+            <button id="btn_search" class="btn-primary btn-sm">搜索</button>
+        </label>`;
+    $('btn_search').onclick = doSearch;
+    $('search_q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+}
+
+async function doSearch() {
+    const q = $('search_q').value.trim();
+    if (!q) return;
+    try {
+        const r = await fetch('/api/requests/search?query=' + encodeURIComponent(q),
+                              {credentials: 'same-origin'});
+        const b = await r.json();
+        const rows = b.data || [];
+        if (b.message) msg('alert-warn', b.message);
+        if (!rows.length) {
+            $('search_results').style.display = 'none';
+            if (!b.message) msg('alert-warn', '没有匹配结果，可直接手填片名。');
+            return;
+        }
+        $('results_list').innerHTML = rows.map(m => `
+            <div class="tmdb-row" data-p='${JSON.stringify(m).replace(/'/g, "&#39;")}'
+                 style="display:flex;gap:10px;padding:7px;border:1px solid #e3e8ef;
+                        border-radius:9px;margin-bottom:6px;cursor:pointer;align-items:center">
+                ${m.poster_path
+                    ? `<img src="https://image.tmdb.org/t/p/w92${m.poster_path}"
+                           style="width:34px;height:50px;object-fit:cover;border-radius:5px">`
+                    : `<div style="width:34px;height:50px;background:#eef1f5;border-radius:5px"></div>`}
+                <div style="min-width:0;flex:1">
+                    <div style="font-weight:550">${m.title}
+                        <span class="faint" style="font-weight:400">${m.year || ''}</span>
+                    </div>
+                    <div class="faint" style="font-size:11.5px">
+                        ${m.overview || ''}
+                    </div>
+                </div>
+            </div>`).join('');
+        $('search_results').style.display = 'block';
+        $('results_list').querySelectorAll('.tmdb-row').forEach(el => {
+            el.onclick = () => pick(el);
+        });
+    } catch (e) {
+        msg('alert-err', '搜索失败：' + e.message);
+    }
+}
+
+function pick(el) {
+    selected = JSON.parse(el.dataset.p);
+    $('results_list').querySelectorAll('.tmdb-row').forEach(x => x.style.borderColor = '#e3e8ef');
+    el.style.borderColor = '#4f46e5';
+    $('title').value = selected.title;
+    $('year').value = selected.year || '';
+    $('media_type').value = selected.media_type;
+    $('media_type').dispatchEvent(new Event('change'));
+}
+
+$('submit').onclick = async () => {
+    const requester = $('requester').value.trim();
+    const title = $('title').value.trim();
+    if (!requester) return msg('alert-err', '请填写你的飞牛用户名');
+    if (!title) return msg('alert-err', '请填写想看的片名');
+
+    try {
+        const r = await fetch('/api/requests/submit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                title, requester,
+                media_type: $('media_type').value,
+                season: parseInt($('season').value, 10) || 0,
+                year: $('year').value.trim(),
+                note: $('note').value.trim(),
+                passcode: $('passcode').value,
+                tmdb_id: selected ? selected.tmdb_id : null,
+                poster_path: selected ? (selected.poster_path || '') : '',
+                overview: selected ? (selected.overview || '') : ''
+            })
+        });
+        const b = await r.json();
+        if (b.status === 'success') {
+            msg('alert-ok', `已提交「${title}」，管理员会尽快处理。`);
+            selected = null;
+            $('title').value = ''; $('note').value = ''; $('year').value = '';
+            loadMine();
+        } else {
+            msg('alert-err', b.message || '提交失败');
+        }
+    } catch (e) {
+        msg('alert-err', '请求失败：' + e.message);
+    }
+};
+
+async function loadMine() {
+    const requester = $('requester').value.trim();
+    if (!requester) {
+        $('mine').innerHTML = '<div class="empty">填入用户名后点击查询</div>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/requests/mine?requester=' + encodeURIComponent(requester),
+                              {credentials: 'same-origin'});
+        const b = await r.json();
+        const rows = b.data || [];
+        if (!rows.length) {
+            $('mine').innerHTML = '<div class="empty">暂无记录</div>';
+            return;
+        }
+        $('mine').innerHTML = rows.map(x => `
+            <div style="padding:8px 0;border-bottom:1px solid #f1f5f9">
+                <div style="display:flex;justify-content:space-between;gap:8px">
+                    <b>${x.title}${x.season ? ' 第' + x.season + '季' : ''}</b>
+                    <span class="badge ${x.status_badge}">${x.status_text}</span>
+                </div>
+                <div class="faint" style="font-size:12px">
+                    ${x.created_at}${x.admin_note ? ' · 管理员：' + x.admin_note : ''}
+                </div>
+            </div>`).join('');
+    } catch (e) {
+        $('mine').innerHTML = '<div class="empty">查询失败</div>';
+    }
+}
+
+$('btn_mine').onclick = loadMine;
+</script>
+</body>
+</html>

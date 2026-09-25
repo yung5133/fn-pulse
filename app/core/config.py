@@ -52,6 +52,13 @@ DEFAULT_CONFIG = {
 
     # ---- 通知（预留） ----
     "webhook_token": "fnpulse",
+
+    # ---- 求片门户 ----
+    # 飞牛影视无法通过 API 校验用户密码（authx 签名素材未公开），因此求片门户
+    # 不要求用户登录，由用户自填飞牛用户名 + 片名。设置 request_passcode 后
+    # 提交需附加口令，避免对外开放时被滥用。
+    "request_enabled": True,
+    "request_passcode": "",
 }
 
 _LOCK = threading.RLock()
@@ -124,4 +131,9 @@ class ConfigManager:
 cfg = ConfigManager()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fnpulse_secret_key_2026")
-PORT = int(os.getenv("PORT", "10307"))
+# 绕过 emby-pulse 占用的 10307 / 10308 段，整体下移到 102xx：
+#   10207  管理员后台
+#   10208  用户求片门户（独立 ASGI 引擎，物理隔离，无法越权进入后台）
+# 两者都可用环境变量覆盖：PORT / USER_PORT
+PORT = int(os.getenv("PORT", "10207"))
+USER_PORT = int(os.getenv("USER_PORT", "10208"))

@@ -1,7 +1,10 @@
 # FnPulse · 飞牛映迹
 
+[![CI](https://github.com/yung5133/fn-pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/yung5133/fn-pulse/actions/workflows/ci.yml)
+[![构建镜像](https://github.com/yung5133/fn-pulse/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/yung5133/fn-pulse/actions/workflows/docker-publish.yml)
+
 飞牛影视（fnOS `trim.media`）的数据洞察与管理面板。项目结构与数据组织方式参考
-[emby-pulse](https://github.com/yung5133/emby-pulse)，数据适配层针对飞牛影视重新实现。
+[emby-pulse](https://github.com/zeyu8023/emby-pulse)，数据适配层针对飞牛影视重新实现。
 
 > 一句话概括：**让飞牛服主看清谁在看、看什么、什么时候看、用什么画质看。**
 
@@ -28,14 +31,17 @@ emby-pulse 依赖 Emby 官方 **Playback Reporting 插件**提供的 `submit_cus
 
 ### Docker Compose（推荐）
 
+镜像由 GitHub Actions 自动构建并推送到 GHCR，支持 `linux/amd64` 与 `linux/arm64`。
+
 ```yaml
 version: "3.8"
 services:
   fn-pulse:
-    image: fn-pulse:latest
+    image: ghcr.io/yung5133/fn-pulse:latest
     container_name: fn-pulse
     restart: unless-stopped
-    network_mode: host          # 管理后台端口 10307
+    # 双端口：10207 管理后台 / 10208 用户求片门户
+    network_mode: host
     volumes:
       - ./config:/app/config
       # 飞牛影视的媒体数据库目录，强烈建议只读挂载
@@ -46,13 +52,33 @@ services:
       - ADMIN_PASSWORD=请改成强密码
 ```
 
-启动后访问 `http://<你的IP>:10307`。
+启动后访问两个地址：
+
+| 端口 | 用途 |
+| --- | --- |
+| `http://<你的IP>:10207` | 🔒 管理员后台 |
+| `http://<你的IP>:10208` | 👤 用户求片门户 |
+
+### 端口号：为什么是 10207 / 10208
+
+上游 emby-pulse 占用 `10307`（管理后台）和 `10308`（用户求片门户）——
+`main.py` 里的 `start_10308_server()` 是独立绑定 10308 的，**不只是 10307**。
+所以本项目整体下移到 `10207 / 10208`，才能与 emby-pulse 在同一台机器上共存。
+
+两个端口都可以用环境变量覆盖：`PORT`（后台）与 `USER_PORT`（门户）。
 
 ### 本地开发
 
 ```bash
 pip install -r requirements.txt
-CONFIG_DIR=./config FN_DB_PATH=/path/to/trimmedia.db PORT=10307 python run.py
+CONFIG_DIR=./config FN_DB_PATH=/path/to/trimmedia.db PORT=10308 python run.py
+```
+
+跑测试（使用合成的 `trimmedia.db`，不接触真实数据）：
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python tests/smoke.py      # 退出码 0 表示全部通过
 ```
 
 ---
@@ -122,12 +148,60 @@ body_hash(其他) = md5(json.dumps(body, sort_keys=True,
 | 用户中心 | `/users` | 账号只读 + 本地备注 / 到期日 / 统计开关 |
 | 数据洞察 | `/insight` | 作息分布、画质结构、用户画像与勋章 |
 | 媒体库 | `/library` | 列表与扫描下发（需 REST 签名素材） |
+| **求片系统** | `/requests_admin`（后台）· `/request`（门户 `10208`） | 见下节 |
 | 系统设置 | `/settings` | 双擎诊断、一键测试、快照重建 |
+
+### 求片系统
+
+对应 emby-pulse 的求片中心，形态上做了两处适配：
+
+**1. 门户不要求登录，采用「自报飞牛用户名 + 片名」。**
+
+emby-pulse 的门户要求用户"用 Emby 账号登录"，因为它能调 `/Users/AuthenticateByName`
+校验密码。飞牛影视做不到：
+* REST 登录需要官方未公开的 `authx` 签名素材；
+* `trimmedia.db` 里的口令是自家哈希，格式未确认，不宜依赖。
+
+所以门户采用**自报身份**模式，并提供一个可选的 `request_passcode` 提交口令，
+对外开放时建议设置。门户运行在独立端口（`10208`）上的独立 ASGI 引擎，
+路径白名单之外一律 404，无法越权触达后台。
+
+**2. 「入库闭环」靠直读媒体库比对，而非等 webhook。**
+
+emby-pulse 依赖 Emby 的 webhook 通知来闭环；飞牛影视没有 webhook。
+本项目改为主动比对：后台点一下「检测入库闭环」，把「待处理/已下载」的求片
+与 `trimmedia.db` 里的条目按标题匹配，命中即自动置为「已入库」。
+
+其余能力与原版对齐：TMDB 搜索选片（带海报、年份、简介）、
+状态链路（待处理 → 已下载 → 已入库 / 已拒绝）、管理员备注回传给提交人、
+提交人可按用户名查询自己的历史。
+
+> 暂未对齐：Telegram 机器人协同、MoviePilot 一键下发。前者需要 webhook 才能推送
+> 播放/入库事件（飞牛无此能力），后者属于缺集管理的一环，见下文「与原版的能力差异」。
 
 ### 关于用户管理的边界
 
 账号的创建、改密、删除请在飞牛影视中操作。**本项目刻意不提供账号写操作** ——
 直接改写 `trimmedia.db` 有损坏风险。本地可维护的只有备注、到期日、是否计入统计。
+
+---
+
+## 与原版（emby-pulse）的能力差异
+
+一句话结论：**能从数据源拿到的，都已实现或可实现；依赖 Emby 服务器自身能力的，做不了。**
+
+| 原版模块 | 本项目状态 | 原因 |
+| --- | --- | --- |
+| 全景仪表盘 / 播放历史 / 风云榜 / 洞察 | ✅ 已实现 | `trimmedia.db` 原生自带流水 |
+| 用户中心 | ✅ 已实现（账号只读） | 飞牛无安全的账号写接口，详见上节 |
+| 求片系统 | ✅ 已实现 | 见上节，鉴权方式与闭环机制有差异 |
+| 媒体库扫描下发 | ✅ 已实现 | 飞牛 REST `/v/api/v1/mdb/scan/{guid}` |
+| 追剧日历 / 缺集管理 / 映迹工坊 / Telegram | ⏳ 待移植 | 数据可得，纯工程量问题 |
+| 实时会话监控（并发人数/IP/转码负荷） | ❌ 不可移植 | 依赖 Emby `/Sessions` 实时接口，飞牛无等价物 |
+| 风控中心（并发超限告警 / 黑名单客户端拦截） | ❌ 不可移植 | 依赖 Emby 的 Webhook 事件流，飞牛不提供 |
+| 去重管理 | ⚠️ 待定 | 需 `item` 表含文件路径列，尚未确认其存在 |
+
+「⏳ 待移植」的部分欢迎提 issue 催更或直接 PR —— 它们不涉及数据源障碍。
 
 ---
 
@@ -174,9 +248,13 @@ fastapi 0.141.1 / starlette 1.7.0 / uvicorn 0.53.0 / jinja2 3.1.6
 
 ## 验证状态
 
-端到端测试覆盖 40 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
-写操作与非法参数过滤，全部通过。
-测试使用合成的 `trimmedia.db`（5 个媒体条目 / 82 条流水），不涉及真实用户数据。
+`tests/smoke.py` 覆盖 61 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
+求片全链路（提交 / 校验 / 状态流转 / **入库闭环**）、门户物理隔离断言、
+写操作与非法参数过滤。
+测试使用合成的 `trimmedia.db`（5 个媒体条目 / 82 条流水），不涉及任何真实用户数据。
+
+CI 在每次 push / PR 时于 Python 3.12 与 3.13 上各跑一遍；
+`docker-publish.yml` 则会构建 `amd64` / `arm64` 双架构镜像并推送到 GHCR。
 
 ---
 

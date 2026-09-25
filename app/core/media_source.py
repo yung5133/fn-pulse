@@ -167,6 +167,23 @@ class MediaSource:
     def __init__(self):
         self.sqlite = _SqliteEngine()
 
+    # ================= 入库闭环用的标题索引 =================
+    def library_titles(self) -> Dict[str, str]:
+        """
+        返回 {小写标题: 展示类型} 的索引，供求片「入库闭环」比对。
+        只取真实媒体条目（电影/剧集/单集），体积可控。
+        """
+        rows = self.sqlite.query(
+            f"SELECT LOWER(TRIM(title)) AS t, type AS ty FROM {TBL_ITEM} "
+            f"WHERE TRIM(COALESCE(title,'')) <> ''"
+        )
+        idx: Dict[str, str] = {}
+        for r in rows:
+            key = (r["t"] or "").strip().lower()
+            if key and key not in idx:
+                idx[key] = str(r["ty"] or "未知")
+        return idx
+
     # ================= 引擎诊断 =================
     @property
     def mode(self) -> str:

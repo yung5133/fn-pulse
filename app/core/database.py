@@ -80,6 +80,36 @@ def ensure_schema(force: bool = False) -> None:
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS media_requests (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title       TEXT NOT NULL,
+                    media_type  TEXT DEFAULT 'movie',
+                    season      INTEGER DEFAULT 0,
+                    year        TEXT DEFAULT '',
+                    note        TEXT DEFAULT '',
+                    requester   TEXT NOT NULL,
+                    status      INTEGER DEFAULT 0,
+                    admin_note  TEXT DEFAULT '',
+                    tmdb_id     INTEGER,
+                    poster_path TEXT DEFAULT '',
+                    overview    TEXT DEFAULT '',
+                    created_at  TEXT,
+                    updated_at  TEXT
+                )
+            """)
+
+            # 老库无损补列（若有版本先于此结构创建过表）
+            for _col, _ddl in (
+                ("tmdb_id", "ALTER TABLE media_requests ADD COLUMN tmdb_id INTEGER"),
+                ("poster_path", "ALTER TABLE media_requests ADD COLUMN poster_path TEXT DEFAULT ''"),
+                ("overview", "ALTER TABLE media_requests ADD COLUMN overview TEXT DEFAULT ''"),
+            ):
+                try:
+                    cur.execute(_ddl)
+                except sqlite3.OperationalError:
+                    pass
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS sys_notifications (
                     id         INTEGER PRIMARY KEY AUTOINCREMENT,
                     type       TEXT,

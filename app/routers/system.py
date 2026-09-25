@@ -26,6 +26,7 @@ WRITABLE_KEYS = {
     "playback_data_mode", "fn_db_path", "db_copy_ttl",
     "hidden_users", "timezone_offset_hours",
     "tmdb_api_key", "proxy_url", "webhook_token",
+    "request_enabled", "request_passcode",
 }
 
 
@@ -61,6 +62,10 @@ def save_settings(body: SettingsModel, _=Depends(require_login)):
             if not isinstance(v, list):
                 continue
             v = [str(x) for x in v if str(x).strip()]
+        if k == "request_enabled":
+            v = bool(v)
+        if k == "request_passcode":
+            v = str(v).strip()
         updates[k] = v
 
     if updates:

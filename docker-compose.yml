@@ -2,10 +2,12 @@ version: "3.8"
 
 services:
   fn-pulse:
-    image: fn-pulse:latest
+    # 由 GitHub Actions 构建并推送到 GHCR；也可本地 docker build
+    image: ghcr.io/yung5133/fn-pulse:latest
     container_name: fn-pulse
     restart: unless-stopped
-    network_mode: host          # 管理后台端口 10307
+    # 双端口：10207 管理后台 / 10208 用户求片门户（均可用环境变量覆盖）
+    network_mode: host
     volumes:
       - ./config:/app/config                                  # 本项目的配置与业务库
       # 飞牛影视的媒体数据库目录（SQLite 引擎必填，强烈建议只读挂载）
@@ -13,12 +15,23 @@ services:
       - /usr/local/apps/@appdata/trim.media/database:/fn-data:ro
     environment:
       - TZ=Asia/Shanghai
+      # ---- 端口（默认 10207 后台 / 10208 求片门户）----
+      # 之所以不用 103xx：上游 emby-pulse 占用 10307(后台) 与 10308(求片门户)，
+      # 整体下移到 102xx 才能与它共存。
+      # - PORT=10207
+      # - USER_PORT=10208
+      # ---- 管理员凭证 ----
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=请改成强密码
       # ---- 飞牛影视连接 ----
       - FN_HOST=http://127.0.0.1:5666
       - FN_USERNAME=                    # 飞牛影视管理员账号
       - FN_PASSWORD=                    # 飞牛影视管理员密码
       # ---- SQLite 引擎（默认，推荐）----
       - FN_DB_PATH=/fn-data/trimmedia.db
+      # ---- 可选：TMDB（求片门户的搜索选片需要）----
+      - TMDB_API_KEY=
+      - PROXY_URL=
       # ---- 可选：HTTP API 引擎签名材料，需自行从飞牛 Web 端获取 ----
       - FN_SECRET_STRING=
       - FN_API_KEY=

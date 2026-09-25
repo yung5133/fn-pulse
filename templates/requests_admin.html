@@ -1,0 +1,193 @@
+{% extends "layout.html" %}
+{% block title %}求片管理 · FnPulse{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">求片管理</h1>
+    <p class="page-desc">
+        用户在求片门户（默认 {{ port }} 端口）提交的片单，在此审核流转
+    </p>
+</div>
+
+<div id="alert" class="alert alert-info">
+    用户侧无需登录：飞牛影视无法通过 API 校验用户密码（REST 需要未公开的 authx 签名素材，
+    库内口令哈希格式亦未确认），因此门户采用「自报飞牛用户名 + 片名」的点片箱模式。
+    如需防止对外滥用，可在系统设置里配置 <b>request_passcode</b> 提交口令。
+</div>
+
+<div class="card">
+    <div class="toolbar">
+        <select id="f_status">
+            <option value="">全部状态</option>
+            <option value="0">待处理</option>
+            <option value="1">已下载</option>
+            <option value="2">已入库</option>
+            <option value="3">已拒绝</option>
+        </select>
+        <button id="btn_reload" class="btn-primary btn-sm">刷新</button>
+        <button id="btn_check" class="btn-sm">检测入库闭环</button>
+        <span class="faint" style="margin-left:auto" id="count"></span>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+            <tr>
+                <th style="width:46px">#</th>
+                <th>片名</th>
+                <th>类型</th>
+                <th>提交人</th>
+                <th>备注</th>
+                <th>提交时间</th>
+                <th>状态</th>
+                <th style="width:190px"></th>
+            </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);
+     align-items:center;justify-content:center;z-index:50">
+    <div class="card" style="width:420px;max-width:calc(100vw - 32px)">
+        <h2 class="card-title" id="modal_title">处理求片</h2>
+        <div id="modal_msg"></div>
+        <input type="hidden" id="m_id">
+        <label class="field">
+            <span>状态</span>
+            <select id="m_status">
+                <option value="0">待处理</option>
+                <option value="1">已下载</option>
+                <option value="2">已入库</option>
+                <option value="3">已拒绝</option>
+            </select>
+        </label>
+        <label class="field">
+            <span>管理员备注（会展示给提交人）</span>
+            <input type="text" id="m_note" placeholder="例如：已收录 4K 版本">
+        </label>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+            <button onclick="closeModal()">取消</button>
+            <button id="btn_delete" style="color:#dc2626">删除</button>
+            <button class="btn-primary" onclick="save()">保存</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modal = document.getElementById('modal');
+let currentId = 0;
+
+function openModal(r) {
+    currentId = r.id;
+    document.getElementById('m_id').value = r.id;
+    document.getElementById('m_status').value = String(r.status);
+    document.getElementById('m_note').value = r.admin_note || '';
+    document.getElementById('modal_title').textContent = '处理：' + r.title;
+    document.getElementById('modal_msg').innerHTML = '';
+    modal.style.display = 'flex';
+}
+function closeModal() { modal.style.display = 'none'; }
+
+async function save() {
+    try {
+        await api('/api/requests/' + currentId + '/status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                status: parseInt(document.getElementById('m_status').value, 10),
+                admin_note: document.getElementById('m_note').value
+            })
+        });
+        closeModal();
+        load();
+    } catch (e) {
+        document.getElementById('modal_msg').innerHTML =
+            `<div class="alert alert-err">${e.message}</div>`;
+    }
+}
+
+document.getElementById('btn_delete').onclick = async () => {
+    if (!confirm('确认删除这条求片记录？')) return;
+    try {
+        await api('/api/requests/' + currentId, {method: 'DELETE'});
+        closeModal();
+        load();
+    } catch (e) {
+        document.getElementById('modal_msg').innerHTML =
+            `<div class="alert alert-err">${e.message}</div>`;
+    }
+};
+
+const TYPE_TEXT = {movie: '电影', series: '剧集', episode: '单集'};
+
+async function load() {
+    const alertBox = document.getElementById('alert');
+    const p = new URLSearchParams();
+    const s = document.getElementById('f_status').value;
+    if (s !== '') p.set('status', s);
+
+    try {
+        const r = await api('/api/requests?' + p.toString());
+        const rows = r.data;
+        document.getElementById('count').textContent = `共 ${rows.length} 条`;
+        const tbody = document.getElementById('tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">没有记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(x => `
+            <tr>
+                <td class="num mono dim">${x.id}</td>
+                <td>
+                    <div style="display:flex;gap:9px;align-items:center">
+                        ${x.poster_path
+                            ? `<img src="https://image.tmdb.org/t/p/w92${x.poster_path}"
+                                   style="width:30px;height:44px;object-fit:cover;border-radius:4px">`
+                            : ''}
+                        <div style="min-width:0">
+                            <div style="font-weight:550">${x.title}</div>
+                            <div class="faint" style="font-size:12px">${x.year || ''}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><span class="badge">${TYPE_TEXT[x.media_type] || x.media_type}</span>
+                    ${x.season ? `<span class="badge badge-info" style="margin-left:4px">第${x.season}季</span>` : ''}
+                </td>
+                <td>${x.requester}</td>
+                <td class="dim" style="max-width:220px">${x.note || '<span class="faint">—</span>'}</td>
+                <td class="mono dim">${x.created_at}</td>
+                <td><span class="badge ${x.status_badge}">${x.status_text}</span></td>
+                <td class="row-actions">
+                    <button class="btn-sm" onclick='openModal(${JSON.stringify(x)})'>处理</button>
+                </td>
+            </tr>`).join('');
+    } catch (e) {
+        alertBox.className = 'alert alert-err';
+        alertBox.textContent = e.message;
+    }
+}
+
+document.getElementById('btn_reload').onclick = load;
+document.getElementById('f_status').onchange = load;
+document.getElementById('btn_check').onclick = async () => {
+    const alertBox = document.getElementById('alert');
+    try {
+        const r = await api('/api/requests/check_library', {method: 'POST'});
+        const d = r.data;
+        alertBox.className = 'alert alert-ok';
+        alertBox.textContent =
+            `检测完成：扫描 ${d.scanned} 条待处理/已下载，其中 ${d.matched} 条已在媒体库中，自动置为已入库。`;
+        load();
+    } catch (e) {
+        alertBox.className = 'alert alert-err';
+        alertBox.textContent = e.message;
+    }
+};
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+window.addEventListener('load', load);
+</script>
+{% endblock %}
