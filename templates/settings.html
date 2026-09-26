@@ -217,12 +217,19 @@
             <button id="btn_wecom_restart" class="btn-sm">{{ icons.icon('refresh', 'ic-sm') }}重连</button>
         </div>
     </div>
-    <p class="faint" style="margin:0 0 12px;font-size:12.5px">
+    <p class="faint" style="margin:0 0 10px;font-size:12.5px">
         走企业微信<b>智能机器人</b>的 WebSocket 长连接，容器只需能出网 ——
         <b>不需要公网 IP、域名、ICP 备案或内网穿透</b>。
-        <span class="mono">bot_id</span> 与 <span class="mono">secret</span>
-        在企业微信管理后台创建「智能机器人」后获取。
+        凭证只需 <span class="mono">Bot ID</span> 与 <span class="mono">Secret</span> 两项，
+        <b>不需要企业 ID（CorpID）</b>。
     </p>
+    <div class="alert alert-info" style="font-size:12.5px">
+        <b>Bot ID 与 Secret 的正确获取路径</b>：企业微信 → 工作台 → <b>智能机器人</b> →
+        创建机器人 → <b>手动创建</b> → 选择页面底部的 <b>「API 模式创建」</b>
+        （普通机器人没有 API 能力，这一步最容易漏）→ 连接方式选
+        <b>「使用长连接」</b> → 页面生成 Bot ID（以 <span class="mono">aib-</span> 开头）与 Secret。
+        <br>Secret 只显示一次；若已丢失，请在后台重置后重新填写。
+    </div>
     <label class="field field-check">
         <input type="checkbox" id="wecom_bot_enabled" style="width:auto">
         <span>启用机器人</span>
@@ -230,7 +237,7 @@
     <div class="grid grid-2">
         <label class="field">
             <span>Bot ID</span>
-            <input type="text" id="wecom_bot_id" autocomplete="off">
+            <input type="text" id="wecom_bot_id" autocomplete="off" placeholder="aib-xxxxxxxxxxxxxxxx">
         </label>
         <label class="field">
             <span>Bot Secret</span>
@@ -430,7 +437,8 @@ async function loadWecom() {
                 ${d.secret_set ? ' · Secret 已设置' : ' · Secret 未设置'}
                 ${d.configured === false ? '' : ''}
             </div>
-            ${d.last_error ? `<div class="alert alert-err" style="margin:10px 0 0">${d.last_error}</div>` : ''}
+            ${d.config_warning ? `<div class="alert alert-warn" style="margin:10px 0 0">${d.config_warning}</div>` : ''}
+            ${d.last_error_hint ? `<div class="alert alert-err" style="margin:10px 0 0">${d.last_error_hint.replace(/\n/g, '<br>')}</div>` : ''}
             ${log.length ? `<div class="mono faint" style="margin-top:10px;font-size:11.5px;line-height:1.9">
                 ${log.map(l => l.replace(/</g, '&lt;')).join('<br>')}</div>` : ''}`;
     } catch (e) {
@@ -443,7 +451,8 @@ document.getElementById('btn_wecom_test').onclick = async () => {
     msg('alert-info', '正在连接企业微信，最长等待 8 秒…');
     try {
         const d = (await api('/api/wecom/test', {method: 'POST'})).data;
-        msg(d.ok ? 'alert-ok' : 'alert-err', `企业微信机器人：${d.message}`);
+        msg(d.ok ? 'alert-ok' : 'alert-err',
+            `企业微信机器人：${(d.message || '').replace(/\n/g, '<br>')}`);
     } catch (e) { msg('alert-err', e.message); }
     loadWecom();
 };

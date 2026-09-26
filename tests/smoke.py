@@ -432,6 +432,42 @@ def main() -> int:
     results.append(("状态接口不泄露 secret 原文", "sec-test" not in json.dumps(d),
                     "已确认"))
 
+    # Bot ID 前缀自检：填成自建应用 AgentId 是最常见的 853000 诱因
+    results.append(("Bot ID 不符合 aib- 前缀时给出告警",
+                    "aib-" in str(d.get("config_warning"))
+                    and "853000" in str(d.get("config_warning")),
+                    str(d.get("config_warning"))[:130]))
+    # 用真实长度的 Secret 覆盖，避免命中最短长度自检（企微 Secret 约 40 位）
+    c.post("/api/system/settings", json={"data": {
+        "wecom_bot_id": "aib-abcdef123456",
+        "wecom_bot_secret": "AbCdEf0123456789AbCdEf0123456789AbCdEf01"}})
+    d = c.get("/api/wecom/status").json()["data"]
+    results.append(("Bot ID 符合 aib- 前缀且 Secret 长度正常时无告警",
+                    d.get("config_warning") == "", str(d.get("config_warning"))[:80]))
+
+    # 短 Secret 应被识别为疑似复制不完整
+    c.post("/api/system/settings", json={"data": {"wecom_bot_secret": "short"}})
+    d = c.get("/api/wecom/status").json()["data"]
+    results.append(("Secret 过短时提示疑似复制不完整",
+                    "偏短" in str(d.get("config_warning")),
+                    str(d.get("config_warning"))[:80]))
+
+    # 853000 报错翻译：必须指向正确获取路径，且明确不需要企业 ID
+    from app.core.wecom_service import BOT_ID_PREFIX, ERROR_HINTS, explain_error
+    raw = ("订阅失败：invalid bot_id or secret, from ip: 1.2.3.4, "
+           "more info at https://open.work.weixin.qq.com/devtool/query?e=853000 (853000)")
+    hint = explain_error(raw)
+    results.append(("853000 翻译为可行动指引",
+                    "API 模式" in hint and BOT_ID_PREFIX in hint and len(hint) > len(raw),
+                    hint[:150]))
+    results.append(("翻译保留原始报错便于对照",
+                    "invalid bot_id or secret" in hint, ""))
+    results.append(("未知错误码不改变原文",
+                    explain_error("some other failure") == "some other failure", ""))
+    results.append(("853000 的说明不含企业 ID 要求（凭证只需两项）",
+                    "CorpID" not in ERROR_HINTS[853000] and "企业ID" not in ERROR_HINTS[853000],
+                    ""))
+
     # 业务入口：用桩客户端验证回复逻辑（完全离线）
     from app.core import wecom_service as _ws
 

@@ -49,6 +49,49 @@ def should_run() -> bool:
     return bool(cfg.get("wecom_bot_enabled")) and bool(_bot_id()) and bool(_secret())
 
 
+# ---------------- 配置自检与报错翻译 ----------------
+# 智能机器人的 Bot ID 有固定前缀（官方帮助 open.work.weixin.qq.com/help2/pc/21677）。
+# 最容易踩的坑是把「自建应用」的 AgentId/Secret 填进来 —— 那样长连接能建立，
+# 但订阅会被服务端拒绝，报 853000 invalid bot_id or secret。
+BOT_ID_PREFIX = "aib-"
+
+# 已核实的错误码。853000 的语义是**凭证不被接受**（不是缺少字段）——
+# 官方帮助与社区排查案例一致表明「Bot ID 正确、Secret 错误」也报这个码。
+ERROR_HINTS = {
+    853000: (
+        "Bot ID 或 Secret 不正确。请按官方路径重新获取：企业微信 → 工作台 → 智能机器人 → "
+        "创建机器人 → 手动创建 → **API 模式创建**（页面底部小字入口，普通机器人没有 API 能力）→ "
+        "连接方式选「使用长连接」→ 页面会生成 Bot ID 与 Secret。"
+        "注意 Bot ID 以 `aib-` 开头；Secret 只显示一次，若丢失需在后台重置。"
+    ),
+}
+
+
+def config_warning() -> str:
+    """配置层面的可疑点 —— 在连接之前就能提示，不必等订阅失败。"""
+    bot_id = _bot_id()
+    if not bot_id:
+        return ""
+    if not bot_id.startswith(BOT_ID_PREFIX):
+        return (f"Bot ID 应以 `{BOT_ID_PREFIX}` 开头（当前为 `{bot_id[:12]}`）。"
+                f"若填的是自建应用的 AgentId，订阅会被拒绝并报 853000 —— "
+                f"请在「工作台 → 智能机器人 → API 模式创建」处获取。")
+    if not _secret():
+        return "尚未填写 Secret"
+    if len(_secret()) < 16:
+        return "Secret 长度异常偏短，可能复制不完整，建议重新复制"
+    return ""
+
+
+def explain_error(message: str) -> str:
+    """把服务端错误码翻译成可行动的说明。没有命中则原样返回。"""
+    text = str(message or "")
+    for code, hint in ERROR_HINTS.items():
+        if str(code) in text:
+            return f"{text}\n\n{hint}"
+    return text
+
+
 # ---------------- 客户端构造（测试可替换） ----------------
 def _make_client() -> WeComBotClient:
     return WeComBotClient(
@@ -138,6 +181,7 @@ def status() -> Dict[str, Any]:
         client = _client
         recent = list(_recent[-12:])
     runtime = client.status() if client is not None else {}
+    last_error = runtime.get("last_error", "")
     return {
         "enabled": bool(cfg.get("wecom_bot_enabled")),
         "bot_id": _bot_id(),
@@ -147,7 +191,9 @@ def status() -> Dict[str, Any]:
         "running": bool(runtime.get("running")),
         "state": runtime.get("state", "idle"),
         "authenticated": bool(runtime.get("authenticated")),
-        "last_error": runtime.get("last_error", ""),
+        "last_error": last_error,
+        "last_error_hint": explain_error(last_error) if last_error else "",
+        "config_warning": config_warning(),
         "connected_at": runtime.get("connected_at"),
         "log": recent,
     }
@@ -174,13 +220,13 @@ def test(wait_seconds: float = 8.0) -> Dict[str, Any]:
             return {"ok": True, "message": "连接成功，已完成订阅，可以收发消息", "status": st}
         if st.get("last_error"):
             return {"ok": False,
-                    "message": f"{st['last_error']}（请确认容器能访问 {st['ws_url']}，"
-                               f"以及 bot_id / secret 是否正确）",
+                    "message": explain_error(st["last_error"]),
                     "status": st}
         time.sleep(0.2)
 
     st = status()
     return {"ok": False,
             "message": f"{int(wait_seconds)} 秒内未完成订阅，状态：{st['state']}。"
-                       f"请确认容器能出网访问 {st['ws_url']}",
+                       f"请确认容器能出网访问 {st['ws_url']}"
+                       + (f"\n\n{st['config_warning']}" if st.get("config_warning") else ""),
             "status": st}
