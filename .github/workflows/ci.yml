@@ -39,3 +39,7 @@ jobs:
       - name: 端到端冒烟测试
         # 使用合成的 trimmedia.db，不涉及任何真实数据
         run: python tests/smoke.py
+
+      - name: 企业微信机器人协议层测试
+        # 离线：用 FakeWS 注入传输层驱动完整状态机，不依赖企微可用性
+        run: python tests/test_wecom_bot.py
