@@ -89,6 +89,16 @@ DEFAULT_CONFIG = {
     "mp_username": os.getenv("MP_USERNAME", "").strip(),
     "mp_password": os.getenv("MP_PASSWORD", "").strip(),
     "mp_token": os.getenv("MP_TOKEN", "").strip(),
+
+    # ---- 企业微信智能机器人（求片对话入口）----
+    # 走「智能机器人」的 WebSocket 长连接 wss://openws.work.weixin.qq.com，
+    # 容器只需能出网即可 —— 不需要公网 IP、域名、ICP 备案或内网穿透。
+    # 注意这与「自建应用 + API 接收消息」是两套机制，后者才要求公网回调地址。
+    # bot_id / secret 在企业微信管理后台创建智能机器人后获取。
+    "wecom_bot_enabled": False,
+    "wecom_bot_id": os.getenv("WECOM_BOT_ID", "").strip(),
+    "wecom_bot_secret": os.getenv("WECOM_BOT_SECRET", "").strip(),
+    "wecom_ws_url": os.getenv("WECOM_WS_URL", "").strip(),
 }
 
 _LOCK = threading.RLock()

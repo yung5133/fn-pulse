@@ -203,7 +203,34 @@ python tools/verify_authx.py \
 | 媒体库 | `/library` | 列表与扫描下发（飞牛 REST，密钥已内置） |
 | **求片系统** | `/requests_admin`（后台）· `/request`（门户 `10208`） | 见下节 |
 | **MoviePilot 对接** | 求片管理页内一键下发 | MP `/api/v1/subscribe` |
+| **企业微信机器人** | 后台「系统设置 → 企业微信机器人」 | 长连接，无需公网/备案 |
 | 系统设置 | `/settings` | 双擎诊断、一键测试、快照重建 |
+
+### 企业微信机器人（求片对话入口）
+
+后台 → **系统设置 → 企业微信机器人**。填 `Bot ID` 与 `Bot Secret`、勾选启用、
+点「测试连接」，显示「已连接」即通。
+
+**为什么不需要公网**：走企业微信**智能机器人**的 WebSocket 长连接
+（`wss://openws.work.weixin.qq.com`），容器只需能出网。这与
+**自建应用的「API 接收消息」是两套机制** —— 后者要求回调 URL 公网可达
+（需备案域名或内网穿透），前者不需要。判断依据是 MoviePilot 的实现
+（`app/modules/wechat/wechatbot.py`）：认证只用 `bot_id` + `secret`，
+无 CorpID / Token / EncodingAESKey，也没有 HTTP 回调入口。
+
+| 配置项 | 说明 |
+| --- | --- |
+| `wecom_bot_enabled` | 启用开关（凭证不全时即使打开也不会连接） |
+| `wecom_bot_id` / `wecom_bot_secret` | 企微后台创建智能机器人后获取 |
+| `wecom_ws_url` | 长连接地址，一般留空；排障时可改 |
+
+运行状态与最近日志直接显示在设置页，另有 `重连` 按钮（网络恢复后不必重启容器）。
+状态接口只回显 `secret_set` 布尔值，不返回密钥原文。
+
+接口：`GET /api/wecom/status` · `POST /api/wecom/test` · `POST /api/wecom/restart`。
+
+> 当前机器人已可连接并响应 `帮助` 指令；**求片命令（搜索 → 选片 → 提交）与
+> 企微 userid ↔ 飞牛账号绑定尚在开发中**，这是下一步。
 
 ### 求片系统
 
@@ -306,6 +333,8 @@ MP 的 `type` 用的是中文枚举（`电影` / `电视剧`），本项目已�
 | `mp_host` | MoviePilot 地址，如 `http://127.0.0.1:3000` |
 | `mp_username` / `mp_password` | MP 账号（OAuth2 表单登录换 access_token） |
 | `mp_token` | MP 管理员 API_TOKEN，经 `X-API-KEY` 头使用（免登录），与账号密码二选一 |
+| `wecom_bot_enabled` / `wecom_bot_id` / `wecom_bot_secret` | 企业微信智能机器人（长连接，无需公网） |
+| `wecom_ws_url` | 机器人长连接地址，默认 `wss://openws.work.weixin.qq.com` |
 
 ---
 
@@ -336,10 +365,11 @@ fastapi 0.141.1 / starlette 1.7.0 / uvicorn 0.53.0 / jinja2 3.1.6
 
 ## 验证状态
 
-`tests/smoke.py` 覆盖 86 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
+`tests/smoke.py` 覆盖 95 项：鉴权拦截与错误密码、7 个页面渲染、18 个业务接口、
 求片全链路（提交 / 校验 / 状态流转 / **入库闭环** / 豆瓣解析器 / 优雅降级）、
 **MoviePilot 对接**（未配置提示 / 载荷构造的中文枚举映射 / 配置回填）、
 **求片门户鉴权三档**（未登录拒绝 / 登录错误提示 / 口令校验 / 不泄露他人记录）、
+**企业微信机器人**（默认不启用 / 凭证不全不连接 / 状态不泄露密钥 / 帮助指令回复）、
 门户物理隔离断言、写操作与非法参数过滤。
 测试使用合成的 `trimmedia.db`（5 个媒体条目 / 82 条流水），不涉及任何真实用户数据，
 且 CI **不依赖豆瓣、TMDB 或 MoviePilot 可用性**（网络路径只做离线解析与载荷验证）。

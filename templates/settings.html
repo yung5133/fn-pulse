@@ -206,6 +206,48 @@
 <div class="card" style="margin-top:16px">
     <div class="card-head">
         <div class="cell-flex">
+            <span class="icon-chip chip-soft">{{ icons.icon('bolt') }}</span>
+            <div>
+                <h2 class="card-title">企业微信机器人</h2>
+                <p class="card-sub">在企微里直接对话求片，无需公网与备案</p>
+            </div>
+        </div>
+        <div class="head-actions">
+            <button id="btn_wecom_test" class="btn-sm">{{ icons.icon('shield', 'ic-sm') }}测试连接</button>
+            <button id="btn_wecom_restart" class="btn-sm">{{ icons.icon('refresh', 'ic-sm') }}重连</button>
+        </div>
+    </div>
+    <p class="faint" style="margin:0 0 12px;font-size:12.5px">
+        走企业微信<b>智能机器人</b>的 WebSocket 长连接，容器只需能出网 ——
+        <b>不需要公网 IP、域名、ICP 备案或内网穿透</b>。
+        <span class="mono">bot_id</span> 与 <span class="mono">secret</span>
+        在企业微信管理后台创建「智能机器人」后获取。
+    </p>
+    <label class="field field-check">
+        <input type="checkbox" id="wecom_bot_enabled" style="width:auto">
+        <span>启用机器人</span>
+    </label>
+    <div class="grid grid-2">
+        <label class="field">
+            <span>Bot ID</span>
+            <input type="text" id="wecom_bot_id" autocomplete="off">
+        </label>
+        <label class="field">
+            <span>Bot Secret</span>
+            <input type="password" id="wecom_bot_secret" autocomplete="new-password">
+        </label>
+        <label class="field" style="grid-column:1 / -1">
+            <span>长连接地址（一般留空，排障时可改）</span>
+            <input type="text" id="wecom_ws_url" autocomplete="off"
+                   placeholder="wss://openws.work.weixin.qq.com">
+        </label>
+    </div>
+    <div id="wecom_status"></div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">
+        <div class="cell-flex">
             <span class="icon-chip chip-soft">{{ icons.icon('user') }}</span>
             <div>
                 <h2 class="card-title">管理员凭证</h2>
@@ -236,9 +278,10 @@
 const KEYS = ['fn_db_path', 'db_copy_ttl', 'timezone_offset_hours', 'playback_data_mode',
               'fn_host', 'fn_public_url', 'fn_username', 'fn_password',
               'fn_api_key', 'fn_api_secret', 'search_source',
-              'mp_host', 'mp_username', 'mp_password', 'mp_token', 'portal_auth_mode'];
+              'mp_host', 'mp_username', 'mp_password', 'mp_token', 'portal_auth_mode',
+              'wecom_bot_id', 'wecom_bot_secret', 'wecom_ws_url'];
 // 复选框单独处理（不是文本框）
-const BOOL_KEYS = ['request_enabled'];
+const BOOL_KEYS = ['request_enabled', 'wecom_bot_enabled'];
 // 求片口令：留空表示不要求口令
 const EXTRA_TEXT_KEYS = ['request_passcode'];
 
@@ -364,6 +407,55 @@ document.getElementById('btn_test').onclick = async () => {
             `<div class="alert alert-${d.http.ok ? 'ok' : 'warn'}">HTTP：${d.http.message}</div>`;
     } catch (e) { msg('alert-err', e.message); }
 };
+async function loadWecom() {
+    const box = document.getElementById('wecom_status');
+    if (!box) return;
+    try {
+        const d = (await api('/api/wecom/status')).data;
+        const state = d.authenticated ? 'ok'
+            : (d.should_run ? (d.last_error ? 'err' : 'warn') : '');
+        const label = d.authenticated ? '已连接'
+            : (d.should_run ? (d.last_error ? '异常' : '连接中') : '未启用');
+        const log = (d.log || []).slice(-6).reverse();
+        box.innerHTML = `
+            <div class="engine-card-head" style="margin-bottom:8px">
+                <div class="cell-flex">
+                    <span class="list-icon">${icon('bolt')}</span>
+                    <b>运行状态</b>
+                </div>
+                <span class="badge ${state ? 'badge-' + state : ''}">${label}</span>
+            </div>
+            <div class="engine-card-body">
+                ${d.bot_id ? 'Bot ID：<span class="mono">' + d.bot_id + '</span>' : '尚未填写 Bot ID'}
+                ${d.secret_set ? ' · Secret 已设置' : ' · Secret 未设置'}
+                ${d.configured === false ? '' : ''}
+            </div>
+            ${d.last_error ? `<div class="alert alert-err" style="margin:10px 0 0">${d.last_error}</div>` : ''}
+            ${log.length ? `<div class="mono faint" style="margin-top:10px;font-size:11.5px;line-height:1.9">
+                ${log.map(l => l.replace(/</g, '&lt;')).join('<br>')}</div>` : ''}`;
+    } catch (e) {
+        box.innerHTML = `<div class="alert alert-err">${e.message}</div>`;
+    }
+}
+
+document.getElementById('btn_wecom_test').onclick = async () => {
+    await save();                       // 先落盘配置，否则测的是旧值
+    msg('alert-info', '正在连接企业微信，最长等待 8 秒…');
+    try {
+        const d = (await api('/api/wecom/test', {method: 'POST'})).data;
+        msg(d.ok ? 'alert-ok' : 'alert-err', `企业微信机器人：${d.message}`);
+    } catch (e) { msg('alert-err', e.message); }
+    loadWecom();
+};
+
+document.getElementById('btn_wecom_restart').onclick = async () => {
+    try {
+        const d = (await api('/api/wecom/restart', {method: 'POST'})).data;
+        msg('alert-ok', d.should_run ? '已按当前配置重新连接' : '未启用或凭证不全');
+    } catch (e) { msg('alert-err', e.message); }
+    loadWecom();
+};
+
 document.getElementById('btn_refresh').onclick = async () => {
     try {
         const r = await api('/api/system/engine/refresh', { method: 'POST' });
@@ -372,6 +464,6 @@ document.getElementById('btn_refresh').onclick = async () => {
     } catch (e) { msg('alert-err', e.message); }
 };
 
-window.addEventListener('load', () => { loadSettings(); loadEngine(); });
+window.addEventListener('load', () => { loadSettings(); loadEngine(); loadWecom(); });
 </script>
 {% endblock %}

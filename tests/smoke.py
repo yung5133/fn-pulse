@@ -10,6 +10,7 @@
 退出码 0 表示全部通过，非 0 表示有失败项（CI 用）。
 """
 
+import json
 import os
 import shutil
 import sqlite3
@@ -397,6 +398,71 @@ def main() -> int:
     # 恢复默认档位，避免影响真实部署的认知
     c.post("/api/system/settings", json={"data": {
         "portal_auth_mode": "fn", "request_passcode": ""}})
+
+    # ---- 企业微信机器人：配置界面与运行时状态 ----
+    check("GET", "/api/wecom/status", 200)
+    d = c.get("/api/wecom/status").json()["data"]
+    results.append(("机器人默认未启用且未运行",
+                    d.get("enabled") is False and d.get("running") is False
+                    and d.get("should_run") is False, str(d)[:140]))
+    r = c.post("/api/wecom/restart").json()
+    results.append(("未启用时重连给出提示而非报错",
+                    r.get("status") == "success" and "未启用" in str(r.get("message")),
+                    str(r.get("message"))[:80]))
+    r = c.post("/api/wecom/test").json()["data"]
+    results.append(("未启用时测试连接直接返回原因（不联网）",
+                    r.get("ok") is False and "未启用" in str(r.get("message")),
+                    str(r.get("message"))[:80]))
+
+    # 只填 bot_id 不填 secret：开关打开也不得启动连接（避免 CI 打真网）
+    c.post("/api/system/settings", json={"data": {
+        "wecom_bot_enabled": True, "wecom_bot_id": "bot-test", "wecom_bot_secret": ""}})
+    d = c.get("/api/wecom/status").json()["data"]
+    results.append(("凭证不全时即使启用也不建立连接",
+                    d["enabled"] is True and d["should_run"] is False
+                    and d["running"] is False, str(d)[:150]))
+
+    # 补齐 secret：仍然保持 enabled=False，确保 CI 不发起真实连接
+    c.post("/api/system/settings", json={"data": {
+        "wecom_bot_enabled": False, "wecom_bot_secret": "sec-test"}})
+    d = c.get("/api/wecom/status").json()["data"]
+    results.append(("配置回填后状态可读（Bot ID / Secret 齐备但不启用）",
+                    d["bot_id"] == "bot-test" and d["secret_set"] is True
+                    and d["should_run"] is False, str(d)[:150]))
+    results.append(("状态接口不泄露 secret 原文", "sec-test" not in json.dumps(d),
+                    "已确认"))
+
+    # 业务入口：用桩客户端验证回复逻辑（完全离线）
+    from app.core import wecom_service as _ws
+
+    class _StubClient:
+        def __init__(self):
+            self.sent = []
+
+        def is_authenticated(self):
+            return True
+
+        @property
+        def last_error(self):
+            return ""
+
+        def send_markdown(self, content, chatid=None, chat_type="single"):
+            self.sent.append((content, chatid, chat_type))
+            return True
+
+    stub = _StubClient()
+    _ws._client = stub
+    _ws.handle_message({"text": "帮助", "sender": "zhangsan",
+                        "chatid": "zhangsan", "chat_type": "single"})
+    results.append(("「帮助」触发说明回复",
+                    len(stub.sent) == 1 and "FnPulse 求片助手" in stub.sent[0][0]
+                    and stub.sent[0][1] == "zhangsan", str(stub.sent)[:120]))
+    _ws.handle_message({"text": "我想看沙丘", "sender": "zhangsan",
+                        "chatid": "zhangsan", "chat_type": "single"})
+    results.append(("未实现的指令给出引导而不是静默丢弃",
+                    len(stub.sent) == 2 and "暂不支持" in stub.sent[1][0],
+                    str(stub.sent[1][0])[:100]))
+    _ws._client = None
 
     # ---- 结果 ----
     failed = [r for r in results if not r[1]]

@@ -28,6 +28,7 @@ WRITABLE_KEYS = {
     "tmdb_api_key", "proxy_url", "webhook_token",
     "request_enabled", "portal_auth_mode", "request_passcode", "search_source",
     "mp_host", "mp_username", "mp_password", "mp_token",
+    "wecom_bot_enabled", "wecom_bot_id", "wecom_bot_secret", "wecom_ws_url",
 }
 
 
@@ -71,6 +72,10 @@ def save_settings(body: SettingsModel, _=Depends(require_login)):
             v = str(v).lower()
             if v not in ("fn", "passcode", "none"):
                 continue
+        if k == "wecom_bot_enabled":
+            v = bool(v)
+        if k in ("wecom_bot_id", "wecom_bot_secret", "wecom_ws_url"):
+            v = str(v).strip()
         if k == "search_source":
             v = str(v).lower()
             if v not in ("douban", "tmdb"):
@@ -82,6 +87,10 @@ def save_settings(body: SettingsModel, _=Depends(require_login)):
         # 数据库源切换后强制重建快照
         if "fn_db_path" in updates or "db_copy_ttl" in updates:
             media_source.sqlite._cols_cache.clear()
+        # 机器人配置变更后立即生效，不必重启容器
+        if any(k.startswith("wecom_") for k in updates):
+            from app.core import wecom_service
+            wecom_service.apply_config()
 
     return ok({"updated": sorted(updates.keys())})
 

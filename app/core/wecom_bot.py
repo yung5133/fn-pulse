@@ -333,6 +333,10 @@ class WeComBotClient:
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive() and not self._stop_event.is_set())
 
+    def is_authenticated(self) -> bool:
+        """是否已完成订阅认证（可收发消息）。"""
+        return self._authenticated.is_set()
+
     def status(self) -> Dict[str, Any]:
         return {
             "configured": self.is_configured(),

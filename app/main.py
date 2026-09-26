@@ -37,6 +37,7 @@ from app.routers import (  # noqa: F401
     system,
     users,
     views,
+    wecom,
 )
 from app.routers.auth import ensure_admin_seeded
 
@@ -131,6 +132,10 @@ async def lifespan(app: FastAPI):
     username, is_default = ensure_admin_seeded()
     threading.Thread(target=start_portal_server, daemon=True).start()
 
+    # 企业微信机器人：仅在启用且凭证齐全时建立长连接（出网即可，无需公网）
+    from app.core import wecom_service
+    wecom_service.apply_config()
+
     print("\n" + "=" * 58)
     print("  FnPulse · 飞牛映迹  启动完成")
     print("-" * 58)
@@ -145,6 +150,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    wecom_service.stop()
     print("\n[系统] FnPulse 已停止。")
 
 
@@ -169,4 +175,5 @@ app.include_router(insight.router)
 app.include_router(library.router)
 app.include_router(requests_router.router)
 app.include_router(moviepilot.router)
+app.include_router(wecom.router)
 app.include_router(system.router)
