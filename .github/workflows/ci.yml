@@ -21,6 +21,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 版本号检查需要与上一个提交对比，深克隆 2 层即可
+          fetch-depth: 2
+
+      - name: 检查版本号是否已更新
+        # app/ 下有代码改动却忘了 bump VERSION，会导致镜像 tag 与上一次
+        # 无法区分 —— 直接失败提醒。PR 不检查（基线不同易误报）。
+        if: github.event_name == 'push'
+        run: |
+          BEFORE=$(git show HEAD~1:VERSION 2>/dev/null | tr -d '[:space:]' || echo "")
+          AFTER=$(tr -d '[:space:]' < VERSION)
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- app/ | wc -l)
+          echo "VERSION: ${BEFORE:-（无）} -> ${AFTER}；app/ 改动文件数：${CHANGED}"
+          if [ -n "${BEFORE}" ] && [ "${CHANGED}" -gt 0 ] && [ "${BEFORE}" = "${AFTER}" ]; then
+            echo "::error::app/ 下有代码改动但 VERSION 未更新（仍为 ${AFTER}）。请 bump VERSION 后再推送，否则镜像 tag 无法区分本次构建。"
+            exit 1
+          fi
 
       - name: 设置 Python
         uses: actions/setup-python@v5
@@ -43,3 +60,8 @@ jobs:
       - name: 企业微信机器人协议层测试
         # 离线：用 FakeWS 注入传输层驱动完整状态机，不依赖企微可用性
         run: python tests/test_wecom_bot.py
+
+      - name: 快照构建回归测试
+        # 离线：覆盖 "database disk image is malformed" 的三条根因
+        # （撕裂读自愈 / WAL 回放 / 损坏源明确报错）
+        run: python tests/test_snapshot.py
