@@ -35,7 +35,7 @@ jobs:
           CHANGED=$(git diff --name-only HEAD~1 HEAD -- app/ | wc -l)
           echo "VERSION: ${BEFORE:-（无）} -> ${AFTER}；app/ 改动文件数：${CHANGED}"
           if [ -n "${BEFORE}" ] && [ "${CHANGED}" -gt 0 ] && [ "${BEFORE}" = "${AFTER}" ]; then
-            echo "::error::app/ 下有代码改动但 VERSION 未更新（仍为 ${AFTER}）。请 bump VERSION 后再推送，否则镜像 tag 无法区分本次构建。"
+            echo "::error::app/ 下有代码改动但 VERSION 未更新（仍为 ${AFTER}）。同一功能迭代请用 python tools/bump_version.py patch；新功能用 minor。"
             exit 1
           fi
 
