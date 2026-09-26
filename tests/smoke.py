@@ -437,6 +437,14 @@ def main() -> int:
                     "aib-" in str(d.get("config_warning"))
                     and "853000" in str(d.get("config_warning")),
                     str(d.get("config_warning"))[:130]))
+
+    # 纯数字 Bot ID = 自建应用 AgentId，给更精确的定向提示
+    c.post("/api/system/settings", json={"data": {"wecom_bot_id": "1000012"}})
+    d = c.get("/api/wecom/status").json()["data"]
+    warn = str(d.get("config_warning"))
+    results.append(("纯数字 Bot ID 被识别为自建应用 AgentId",
+                    "自建应用" in warn and "AgentId" in warn and "API 模式" in warn,
+                    warn[:140]))
     # 用真实长度的 Secret 覆盖，避免命中最短长度自检（企微 Secret 约 40 位）
     c.post("/api/system/settings", json={"data": {
         "wecom_bot_id": "aib-abcdef123456",

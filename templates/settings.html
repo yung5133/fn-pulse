@@ -229,6 +229,33 @@
         （普通机器人没有 API 能力，这一步最容易漏）→ 连接方式选
         <b>「使用长连接」</b> → 页面生成 Bot ID（以 <span class="mono">aib-</span> 开头）与 Secret。
         <br>Secret 只显示一次；若已丢失，请在后台重置后重新填写。
+        <br>智能机器人需要企业微信 <b>5.0.7+</b>；低版本后台没有该入口。
+    </div>
+
+    <div class="alert alert-warn" style="font-size:12.5px">
+        <b>请勿使用「自建应用」的凭证</b>。自建应用与智能机器人是两套体系：
+        <table style="width:100%;margin-top:8px;font-size:12px;border-collapse:collapse">
+            <tr style="text-align:left">
+                <th style="padding:3px 6px 3px 0;width:88px"></th>
+                <th style="padding:3px 6px">收消息通道</th>
+                <th style="padding:3px 6px">需要公网</th>
+            </tr>
+            <tr>
+                <td style="padding:3px 6px 3px 0"><b>智能机器人</b><br>（本页用这个）</td>
+                <td style="padding:3px 6px">WebSocket 长连接</td>
+                <td style="padding:3px 6px">否</td>
+            </tr>
+            <tr>
+                <td style="padding:3px 6px 3px 0">自建应用</td>
+                <td style="padding:3px 6px">API 接收消息<br>（HTTP 回调）</td>
+                <td style="padding:3px 6px"><b>是</b><br>需备案域名或内网穿透</td>
+            </tr>
+        </table>
+        <div style="margin-top:8px">
+            自建应用的 AgentId（纯数字）与 Secret 填到这里会被服务端拒绝并报
+            <span class="mono">853000</span>；它的接收通道是 HTTP 回调，
+            <b>在 NAS 内网环境下不可用</b>，因此本项目不采用该通道。
+        </div>
     </div>
     <label class="field field-check">
         <input type="checkbox" id="wecom_bot_enabled" style="width:auto">

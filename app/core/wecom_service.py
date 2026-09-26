@@ -73,8 +73,15 @@ def config_warning() -> str:
     if not bot_id:
         return ""
     if not bot_id.startswith(BOT_ID_PREFIX):
+        # 自建应用的 AgentId 是纯数字，这是最常见的一种填错
+        if bot_id.isdigit():
+            return (f"Bot ID 看起来是**自建应用的 AgentId**（纯数字 `{bot_id[:12]}`）。"
+                    f"自建应用与智能机器人是两套体系，其 AgentId / Secret 在这里无效，"
+                    f"订阅会被拒绝并报 853000。请改用：工作台 → 智能机器人 → "
+                    f"创建机器人 → 手动创建 → **API 模式创建** → **使用长连接**，"
+                    f"生成的 Bot ID 以 `{BOT_ID_PREFIX}` 开头。")
         return (f"Bot ID 应以 `{BOT_ID_PREFIX}` 开头（当前为 `{bot_id[:12]}`）。"
-                f"若填的是自建应用的 AgentId，订阅会被拒绝并报 853000 —— "
+                f"若填的是自建应用的凭证，订阅会被拒绝并报 853000 —— "
                 f"请在「工作台 → 智能机器人 → API 模式创建」处获取。")
     if not _secret():
         return "尚未填写 Secret"
